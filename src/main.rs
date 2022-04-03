@@ -11,7 +11,7 @@ type CMD = Vec<String>;
 
 fn main() -> Result<(), std::io::Error> {
     let listener_local = TcpListener::bind("127.0.0.1:51234")?;
-    let listener_lan = TcpListener::bind("192.168.0.98:51234")?;
+    let listener_lan = TcpListener::bind("192.168.0.108:51234")?;
 
     let (tx, rx): (Sender<CMD>, Receiver<CMD>) = mpsc::channel();
     let tx2 = tx.clone();

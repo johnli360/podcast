@@ -28,12 +28,13 @@ pub fn do_stuff(mut stream: TcpStream) {
                 println!("Done");
                 break;
             }
-            Ok(cuont) => print!(
+            Ok(count) => print!(
                 "Read: {} {}",
-                cuont,
-                str::from_utf8(&buf[0..cuont]).unwrap()
+                count,
+                str::from_utf8(&buf[0..count]).unwrap()
             ),
         };
     }
+
     drop(buf);
 }
