@@ -10,6 +10,7 @@ use player::*;
 type CMD = Vec<String>;
 
 fn main() -> Result<(), std::io::Error> {
+    gstreamer::init().unwrap();
     let listener_local = TcpListener::bind("127.0.0.1:51234")?;
     let listener_lan = TcpListener::bind("192.168.0.108:51234")?;
 
@@ -28,7 +29,11 @@ fn main() -> Result<(), std::io::Error> {
 
 fn ploop(queue: Receiver<CMD>) {
     for cmd in queue.iter() {
-        play(cmd, true);
+        // play(&cmd, true);
+        let cmd = [String::from("file:///home/jl/programming/rust/musicplayer/test.mp3")];
+        // let cmd = [String::from("https://www.freedesktop.org/software/gstreamer-sdk/data/media/sintel_trailer-480p.webm")];
+        play(&cmd, true);
+        println!("done with: {:?}", &cmd);
     }
 }
 
