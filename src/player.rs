@@ -1,11 +1,17 @@
-use gst::{prelude::*, Message};
+use gst::{prelude::*, Bus, Message};
 use gstreamer as gst;
+use tokio_stream::{Stream, StreamExt};
+// use std::futures::StreamExt;
 use std::{
+    future::Future,
     io::{self, Write},
+    pin::Pin,
     process::{Command, Stdio},
     sync::{Arc, Mutex},
+    task::Poll,
     thread::{self, JoinHandle},
 };
+use tokio::{select, sync::mpsc::Sender};
 
 use std::sync::mpsc;
 
@@ -16,7 +22,7 @@ struct Player {
     // playing: bool,
     /// Should we terminate execution?
     // observe: bool,
-    thread: Option<JoinHandle<()>>,
+    // thread: Option<JoinHandle<()>>,
     /// Is seeking enabled for this media?
     // seek_enabled: bool,
     /// Have we performed the seek already?
@@ -34,7 +40,7 @@ impl Player {
             playbin,
             // playing: false,
             // observe: false,
-            thread: None,
+            // thread: None,
             // observer:
             // seek_enabled: false,
             duration: None,
@@ -46,32 +52,8 @@ impl Player {
     }
 
     fn play(&mut self) {
-
-        if let Err(err)  = self.playbin
-            .set_state(gst::State::Playing) {
-                eprintln!("Unable to set the playbin to the `Playing` state: {err}");
-        }
-            // .expect("Unable to set the playbin to the `Playing` state");
-        // self.observe = true;
-        // self
-
-        let bus = self.playbin.bus().unwrap();
-        for msg in bus.iter_timed(gst::ClockTime::NONE) {
-            use gst::MessageView;
-
-            match msg.view() {
-                MessageView::Eos(..) => break,
-                MessageView::Error(err) => {
-                    println!(
-                        "Error from {:?}: {} ({:?})",
-                        err.src().map(|s| s.path_string()),
-                        err.error(),
-                        err.debug()
-                    );
-                    break;
-                }
-                _ => (),
-            }
+        if let Err(err) = self.playbin.set_state(gst::State::Playing) {
+            eprintln!("Unable to set the playbin to the `Playing` state: {err}");
         }
     }
 }
@@ -139,59 +121,113 @@ impl Player {
 /* } */
 
 #[derive(Debug)]
-enum Cmd {
+pub enum Cmd {
     Play,
     Queue(String),
-}
-enum Event {
-    Bus(Message),
-    Cmd(Cmd),
+    Shutdown,
 }
 
-fn new() -> (JoinHandle<()>, mpsc::Sender<Cmd>) {
-    let (tx, rx) = mpsc::channel::<Cmd>();
-    // let playbin = gst::ElementFactory::make("playbin", Some("playbin"))
-    // .expect("Failed to create playbin element");
-    // let bus = playbin.bus().unwrap();
-    let handle = thread::spawn(move || {
+struct TimedBus {
+    bus: Bus,
+}
+impl Future for TimedBus {
+    type Output = Message;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        todo!()
+    }
+}
+
+fn handle_cmd(cmd: Cmd, player: &mut Player) -> bool {
+    // if let Some(cmd) = cmd {
+    match cmd {
+        Cmd::Play => {
+            player.play();
+        }
+        Cmd::Queue(uri) => player.queue(&uri),
+        Cmd::Shutdown => {
+            // Shutdown pipeline
+            player
+                .playbin
+                .set_state(gst::State::Null)
+                .expect("Unable to set the pipeline to the `Null` state");
+            return false;
+        }
+    }
+    return true;
+    // }
+}
+
+async fn new() -> Sender<Cmd> {
+    // let (tx, rx) = tokio::channel::<Cmd>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+    // let handle = thread::spawn(move || {
+    // bus_stream.next();
+    // bus_stream.
+
+    tokio::spawn(async move {
         let mut player = Player::new();
-        // let bus = player.playbin.bus().unwrap();
-
-        // let bus_handle = thread::spawn(move || {
-        // for bus
-        // });
-        for cmd in rx.iter() {
-            // for cmd in cmdz.chain(buz) {
-            println!("play thread received: {cmd:?}");
-            match cmd {
-                Cmd::Play => {
-                    player.play();
-                    // .observe();
-                }
-                Cmd::Queue(uri) => player.queue(&uri),
+        let bus = player.playbin.bus().unwrap();
+        // bus.add_signal_watch();
+        println!("add_watch!");
+        // bus.add_watch(|bus, msg| {
+        // println!("bus: {msg:?}");
+        // Continue(true)
+        // })
+        // .expect("add_watch error");
+        // let mut bus_stream = bus.stream();
+        // bus.enable_sync_message_emission();
+        // bus.
+        let mut bus_stream = bus.stream();
+        // while let Some(cmd) = rx.recv().await {
+        // println!("loop: {cmd:?}");
+        // handle_cmd(cmd, &mut player);
+        // }
+        'exit: loop {
+            // println!("loop");
+            // }
+            select! {
+            Some(cmd) = rx.recv() => {
+            println!("new cmd: {cmd:?}");
+            if !handle_cmd(cmd, &mut player)  {
+                break 'exit
+            }
+            }
+            msg = bus_stream.next() => {
+            // println!("new bus msg: {msg:?}");
+            if let Some(msg) = msg {
+            handle_message(&mut player, &msg)
+            }
+            }
             }
         }
-        // bus_handle.join().expect("bus handle join failed:(");
     });
 
-    (handle, tx)
+    // let bus_handle = thread::spawn(move || {
+    // for bus
+    // });
+    /*     for cmd in rx.iter() { */
+    /* // for cmd in cmdz.chain(buz) { */
+    /* println!("play thread received: {cmd:?}"); */
+    /* } */
+
+    tx
 }
 
-pub fn play(input: &[String], block: bool) {
+pub async fn play(input: &str, block: bool) -> Sender<Cmd> {
     println!("{input:?}");
-    let (handle, tx) = new();
-    tx.send(Cmd::Queue(input[0].clone())).unwrap();
-    println!("post queue");
-    tx.send(Cmd::Play).unwrap();
-    println!("post play");
-    // std::
-    // loop {
-    // }
-    // handle.join().unwrap();
-    println!("post join");
-    // player.queue(&input[0]);
-    // player.play();
-    // observe(&mut player);
+    // let (handle, tx) =
+    let tx = new().await;
+    if let Err(err) = tx.send(Cmd::Queue(input.to_string())).await {
+        eprintln!("queue {err}");
+    }
+    // println!("post queue");
+
+    if let Err(err) = tx.send(Cmd::Play).await {
+        eprintln!("play {err}");
+    }
+    // println!("post play");
+    tx
 }
 
 fn handle_message(player: &mut Player, msg: &gst::Message) {
