@@ -10,3 +10,5 @@ edition = "2021"
 gstreamer = "*"
 tokio = { version = "1.17.0", features = ["full"] }
 tokio-stream = "*"
+crossterm = "*"
+
