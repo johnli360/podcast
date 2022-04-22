@@ -2,7 +2,7 @@ use gst::prelude::*;
 use gstreamer as gst;
 use tokio_stream::StreamExt;
 // use std::futures::StreamExt;
-use std::time::Duration;
+use std::{time::Duration, io::Write};
 use tokio::{select, sync::mpsc::Sender, time};
 
 struct Player {
@@ -44,7 +44,7 @@ impl Player {
 
     fn play(&mut self) {
         if let Err(err) = self.playbin.set_state(gst::State::Playing) {
-            eprintln!("Unable to set the playbin to the `Playing` state: {err}");
+            eprintln_raw!("Unable to set the playbin to the `Playing` state: {err}");
         }
     }
 }
@@ -64,6 +64,7 @@ fn handle_cmd(cmd: Cmd, player: &mut Player) -> bool {
         }
         Cmd::Queue(uri) => player.queue(&uri),
         Cmd::Shutdown => {
+            // println!(
             // Shutdown pipeline
             player
                 .playbin
@@ -86,7 +87,7 @@ async fn new() -> Sender<Cmd> {
         'exit: loop {
             select! {
                 Some(cmd) = rx.recv() => {
-                    println!("new cmd: {cmd:?}");
+                    println_raw!("new cmd: {cmd:?}");
                     if !handle_cmd(cmd, &mut player)  {
                         break 'exit
                     }
@@ -107,6 +108,8 @@ async fn new() -> Sender<Cmd> {
                             .query_position::<gst::ClockTime>()
                             .expect("Could not query current position.");
                         print!("\r{position} / {}", player.duration.display());
+                    std::io::stdout().flush().unwrap();
+                        // print!("\r{position} / {}", player.duration.display());
                     }
                 }
 
@@ -118,15 +121,18 @@ async fn new() -> Sender<Cmd> {
 }
 
 pub async fn play(input: &str, block: bool) -> Sender<Cmd> {
-    println!("{input:?}");
+    println_raw!("{input:?}");
 
     let tx = new().await;
     if let Err(err) = tx.send(Cmd::Queue(input.to_string())).await {
-        eprintln!("queue {err}");
+        let x = 32;
+        println_raw!("{}", x);
+
+        eprintln_raw!("queue {err}");
     }
 
     if let Err(err) = tx.send(Cmd::Play).await {
-        eprintln!("play {err}");
+        eprintln_raw!("play {err}");
     }
     tx
 }
@@ -136,7 +142,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
 
     match msg.view() {
         MessageView::Error(err) => {
-            println!(
+            println_raw!(
                 "Error received from element {:?}: {} ({:?})",
                 err.src().map(|s| s.path_string()),
                 err.error(),
@@ -144,7 +150,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
             );
         }
         MessageView::Eos(..) => {
-            println!("End-Of-Stream reached.");
+            println_raw!("End-Of-Stream reached.");
         }
         MessageView::DurationChanged(_) => {
             // The duration has changed, mark the current one as invalid
@@ -159,7 +165,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
                 let new_state = state_changed.current();
                 let old_state = state_changed.old();
 
-                println!(
+                println_raw!(
                     "Pipeline state changed from {:?} to {:?}",
                     old_state, new_state
                 );
@@ -172,12 +178,12 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
                         let (seekable, start, end) = seeking.result();
                         player.seek_enabled = seekable;
                         if seekable {
-                            println!("Seeking is ENABLED from {} to {}", start, end)
+                            println_raw!("Seeking is ENABLED from {} to {}", start, end)
                         } else {
-                            println!("Seeking is DISABLED for this stream.")
+                            println_raw!("Seeking is DISABLED for this stream.")
                         }
                     } else {
-                        eprintln!("Seeking query failed.")
+                        eprintln_raw!("Seeking query failed.")
                     }
                 }
             }
