@@ -1,10 +1,10 @@
-use std::io::{Write, stdout};
+use std::io::{stdout, Write};
 
 use crossterm::cursor::MoveTo;
 use crossterm::event::{self, read, Event, KeyCode, KeyEvent};
 use crossterm::style::Print;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
-use crossterm::{terminal, execute};
+use crossterm::{execute, terminal};
 use podaemon::read_lines;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::TcpListener;
@@ -17,14 +17,12 @@ mod macros;
 mod player;
 use player::*;
 
-type CMD = String;
-
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
     gstreamer::init().unwrap();
     execute!(stdout(), EnterAlternateScreen)?;
 
-    let (tx, rx) = mpsc::channel::<CMD>(64);
+    let (tx, rx) = mpsc::channel::<Cmd>(64);
     let tx2 = tx.clone();
     let tx3 = tx.clone();
 
@@ -40,14 +38,18 @@ async fn main() -> Result<(), std::io::Error> {
 
     let key_thread = std::thread::spawn(move || {
         while let Ok(c) = read() {
-            if let Event::Key(KeyEvent { code, .. }) = c {
+            if let Event::Key(KeyEvent { code, modifiers }) = c {
+                use KeyCode::Char;
                 match code {
-                    KeyCode::Char('q') => {
-                        tx3.blocking_send("quit".into()).expect("bad send :(");
+                    Char('q') => {
+                        tx3.blocking_send(Cmd::Quit).expect("bad send :(");
                         break;
                     }
-                    KeyCode::Char(c) => {
-                        println_raw!("pressed: {c:?}");
+                    Char(' ') => {
+                        tx3.blocking_send(Cmd::PlayPause).expect("bad send :(");
+                    }
+                    Char(c) => {
+                        println_raw!("pressed: {c:?}, mods: {modifiers:?}");
                     }
                     _ => {}
                 }
@@ -67,50 +69,43 @@ async fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-async fn ploop(mut queue: Receiver<CMD>) {
-    let mut playas: Vec<Sender<Cmd>> = Vec::new();
+async fn ploop(mut queue: Receiver<Cmd>) {
+    let p: Sender<Cmd> = player::new().await;
     while let Some(cmd) = queue.recv().await {
-        if cmd.starts_with("stop") {
-            for p in &playas {
-                if let Err(err) = p.send(player::Cmd::Shutdown).await {
-                    eprintln_raw!("{err}");
-                }
+        if cmd == Cmd::Quit {
+            if let Err(err) = p.send(player::Cmd::Shutdown).await {
+                eprintln_raw!("{err}");
             }
-        } else if cmd == "quit" {
-            for p in &playas {
-                if let Err(err) = p.send(player::Cmd::Shutdown).await {
-                    eprintln_raw!("{err}");
-                }
-                p.closed().await;
-            }
-
+            p.closed().await;
             return;
-        } else {
-            let cmd = String::from("file:///home/jl/programming/rust/musicplayer/test.mp3");
-            let tx = play(&cmd, true).await;
-            playas.push(tx);
-            println_raw!("done with: {:?}", &cmd);
         }
+
+        if let Err(err) = p.send(cmd).await {
+            eprintln_raw!("{err}");
+        }
+
     }
 }
 
-async fn listen(queue: Sender<CMD>, addr: &str) {
+async fn listen(queue: Sender<Cmd>, addr: &str) {
     let listener = TcpListener::bind(addr).await.unwrap();
     println_raw!("listening on: {}", listener.local_addr().unwrap());
 
+    let mut buf = String::new();
     while let Ok((mut socket, _addr)) = listener.accept().await {
         println_raw!("new connection");
-        let mut buf = String::new();
         match socket.read_to_string(&mut buf).await {
             Ok(n) => {
-                println_raw!("read {n}, {buf}");
-                if let Err(msg) = queue.send(buf).await {
-                    eprintln_raw!("receiver dropped: {}", msg);
+                println_raw!("read {n} from socket");
+                if let Some(cmd) = player::parse_cmd(&buf) {
+                    if let Err(msg) = queue.send(cmd).await {
+                        eprintln_raw!("receiver dropped: {}", msg);
+                    }
                 }
-                println_raw!("sent");
             }
             Err(e) => print!("Err: {}", e),
         }
+        buf.clear();
     }
     println_raw!("loop ended");
 }

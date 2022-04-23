@@ -2,7 +2,8 @@ use gst::prelude::*;
 use gstreamer as gst;
 use tokio_stream::StreamExt;
 // use std::futures::StreamExt;
-use std::{time::Duration, io::Write};
+use std::{io::Write, time::Duration};
+use strum_macros::EnumString;
 use tokio::{select, sync::mpsc::Sender, time};
 
 struct Player {
@@ -47,36 +48,80 @@ impl Player {
             eprintln_raw!("Unable to set the playbin to the `Playing` state: {err}");
         }
     }
+
+    fn play_pause(&mut self) {
+        let state = if self.playing {
+            gst::State::Paused
+        } else {
+            gst::State::Playing
+        };
+        if let Err(err) = self.playbin.set_state(state) {
+            eprintln_raw!("Unable to set the playbin to `{state:?}`: {err}");
+        }
+    }
+
+    fn pause(&mut self) {
+        self.playbin
+            .set_state(gst::State::Paused)
+            .expect("Unable to set the pipeline to the `Null` state");
+    }
+
+    fn shutdown(&mut self) {
+        self.playbin
+            .set_state(gst::State::Null)
+            .expect("Unable to set the pipeline to the `Null` state");
+    }
 }
 
-#[derive(Debug)]
+use strum_macros::{AsStaticStr, Display};
+#[derive(Debug, EnumString, AsStaticStr, Display, PartialEq, Eq)]
+#[strum(serialize_all = "snake_case")]
 pub enum Cmd {
     Play,
+    Pause,
+    PlayPause,
     Queue(String),
     Shutdown,
+    Quit,
+}
+pub fn parse_cmd(buf: &str) -> Option<Cmd> {
+    let qstr = &Cmd::Queue("".into()).to_string();
+    if buf.starts_with(qstr) {
+        if let Some(uri) = buf
+            .strip_prefix(qstr)
+            .and_then(|s| s.strip_prefix("("))
+            .and_then(|s| s.strip_suffix(")"))
+        {
+            Some(Cmd::Queue(uri.to_string()))
+        } else {
+            eprintln_raw!("parse error: {buf}");
+            None
+        }
+    } else if let cmd @ Ok(_) = buf.trim_end().parse() {
+        cmd.ok()
+    } else {
+        eprintln_raw!("failed to parse: {buf}");
+        None
+    }
 }
 
-fn handle_cmd(cmd: Cmd, player: &mut Player) -> bool {
-    // if let Some(cmd) = cmd {
+fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
     match cmd {
         Cmd::Play => {
             player.play();
         }
+        Cmd::Pause => player.pause(),
+        Cmd::PlayPause => player.play_pause(),
         Cmd::Queue(uri) => player.queue(&uri),
-        Cmd::Shutdown => {
-            // println!(
-            // Shutdown pipeline
-            player
-                .playbin
-                .set_state(gst::State::Null)
-                .expect("Unable to set the pipeline to the `Null` state");
+        Cmd::Shutdown | Cmd::Quit => {
+            player.shutdown();
             return false;
         }
     }
-    return true;
+    true
 }
 
-async fn new() -> Sender<Cmd> {
+pub async fn new() -> Sender<Cmd> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
     tokio::spawn(async move {
         let mut player = Player::new();
@@ -88,7 +133,7 @@ async fn new() -> Sender<Cmd> {
             select! {
                 Some(cmd) = rx.recv() => {
                     println_raw!("new cmd: {cmd:?}");
-                    if !handle_cmd(cmd, &mut player)  {
+                    if !run_cmd(cmd, &mut player)  {
                         break 'exit
                     }
                 }
@@ -120,7 +165,7 @@ async fn new() -> Sender<Cmd> {
     tx
 }
 
-pub async fn play(input: &str, block: bool) -> Sender<Cmd> {
+pub async fn play(input: &str) -> Sender<Cmd> {
     println_raw!("{input:?}");
 
     let tx = new().await;
@@ -167,7 +212,8 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
 
                 println_raw!(
                     "Pipeline state changed from {:?} to {:?}",
-                    old_state, new_state
+                    old_state,
+                    new_state
                 );
 
                 player.playing = new_state == gst::State::Playing;
