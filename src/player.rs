@@ -71,6 +71,33 @@ impl Player {
             .set_state(gst::State::Null)
             .expect("Unable to set the pipeline to the `Null` state");
     }
+
+    fn seek(&mut self, pos: u64) {
+        if let Err(err) = self.playbin.seek_simple(
+            gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+            gst::ClockTime::from_seconds(pos),
+        ) {
+            eprintln_raw!("failed to seek: {err}");
+        }
+    }
+
+    fn seek_relative(&mut self, delta: i64) {
+        if let Some(current) = self.query_position() {
+            let current = current.seconds();
+            let new = if delta < 0 {
+                 current.checked_sub(delta.unsigned_abs()).unwrap_or(0)
+            } else {
+                current.checked_add(delta.unsigned_abs()).unwrap_or(u64::MAX)
+            };
+            self.seek(new);
+        } else {
+            eprintln_raw!("failed seek_relative");
+        }
+    }
+    fn query_position(&self) -> Option<gst::ClockTime> {
+        self.playbin.query_position::<gst::ClockTime>()
+        // .expect("Could not query current position.")
+    }
 }
 
 use strum_macros::{AsStaticStr, Display};
@@ -82,23 +109,37 @@ pub enum Cmd {
     PlayPause,
     Queue(String),
     Shutdown,
+    Seek(u64),
+    SeekRelative(i64),
     Quit,
 }
-pub fn parse_cmd(buf: &str) -> Option<Cmd> {
-    let qstr = &Cmd::Queue("".into()).to_string();
-    if buf.starts_with(qstr) {
-        if let Some(uri) = buf
-            .strip_prefix(qstr)
-            .and_then(|s| s.strip_prefix("("))
-            .and_then(|s| s.strip_suffix(")"))
-        {
-            Some(Cmd::Queue(uri.to_string()))
-        } else {
-            eprintln_raw!("parse error: {buf}");
-            None
+fn parse_cmd_arg(buf: &str) -> Option<Cmd> {
+    if let Some((variant, Some(arg))) = buf
+        .split_once("(")
+        .and_then(|(variant, s)| Some((variant, s.strip_suffix(")"))))
+    {
+        println_raw!("variant: {variant}");
+        match variant {
+            // TODO: make more extensible somehow
+            "queue" => return Some(Cmd::Queue(arg.into())),
+            "seek" => return arg.parse().ok().and_then(|arg| Some(Cmd::Seek(arg))),
+            "seek_relative" => {
+                return arg
+                    .parse()
+                    .ok()
+                    .and_then(|arg| Some(Cmd::SeekRelative(arg)))
+            }
+            _ => {}
         }
-    } else if let cmd @ Ok(_) = buf.trim_end().parse() {
+    }
+    None
+}
+
+pub fn parse_cmd(buf: &str) -> Option<Cmd> {
+    if let cmd @ Ok(_) = buf.trim_end().parse() {
         cmd.ok()
+    } else if let cmd @ Some(_) = parse_cmd_arg(buf) {
+        cmd
     } else {
         eprintln_raw!("failed to parse: {buf}");
         None
@@ -117,6 +158,12 @@ fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
             player.shutdown();
             return false;
         }
+        Cmd::Seek(x) => {
+            player.seek(x);
+        }
+        Cmd::SeekRelative(delta) => {
+            player.seek_relative(delta);
+        }
     }
     true
 }
@@ -129,12 +176,12 @@ pub async fn new() -> Sender<Cmd> {
         let mut bus_stream = bus.stream();
         let mut interval = time::interval(Duration::from_millis(100));
 
-        'exit: loop {
+        loop {
             select! {
                 Some(cmd) = rx.recv() => {
                     println_raw!("new cmd: {cmd:?}");
                     if !run_cmd(cmd, &mut player)  {
-                        break 'exit
+                            return
                     }
                 }
                 msg = bus_stream.next() => {
@@ -148,13 +195,15 @@ pub async fn new() -> Sender<Cmd> {
                             player.duration = player.playbin.query_duration();
                         }
 
-                        let position = player
-                            .playbin
-                            .query_position::<gst::ClockTime>()
-                            .expect("Could not query current position.");
-                        print!("\r{position} / {}", player.duration.display());
-                    std::io::stdout().flush().unwrap();
-                        // print!("\r{position} / {}", player.duration.display());
+                        if let Some(position) = player.query_position() {
+                            print_raw!("\r{position} / {}", player.duration.display());
+                        } else {
+                            eprintln_raw!("Could not query current position.")
+                        }
+
+                        if let Err(err) = std::io::stdout().flush() {
+                            eprintln_raw!("failed flush: {err}");
+                        }
                     }
                 }
 
@@ -162,23 +211,6 @@ pub async fn new() -> Sender<Cmd> {
         }
     });
 
-    tx
-}
-
-pub async fn play(input: &str) -> Sender<Cmd> {
-    println_raw!("{input:?}");
-
-    let tx = new().await;
-    if let Err(err) = tx.send(Cmd::Queue(input.to_string())).await {
-        let x = 32;
-        println_raw!("{}", x);
-
-        eprintln_raw!("queue {err}");
-    }
-
-    if let Err(err) = tx.send(Cmd::Play).await {
-        eprintln_raw!("play {err}");
-    }
     tx
 }
 

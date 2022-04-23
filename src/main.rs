@@ -1,11 +1,10 @@
 use std::io::{stdout, Write};
 
-use crossterm::cursor::MoveTo;
 use crossterm::event::{self, read, Event, KeyCode, KeyEvent};
-use crossterm::style::Print;
+
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal};
-use podaemon::read_lines;
+
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -37,22 +36,29 @@ async fn main() -> Result<(), std::io::Error> {
     };
 
     let key_thread = std::thread::spawn(move || {
+        let mut done = false;
         while let Ok(c) = read() {
             if let Event::Key(KeyEvent { code, modifiers }) = c {
                 use KeyCode::Char;
-                match code {
+                let res = match code {
                     Char('q') => {
-                        tx3.blocking_send(Cmd::Quit).expect("bad send :(");
-                        break;
+                        done = true;
+                        Some(tx3.blocking_send(Cmd::Quit))
                     }
-                    Char(' ') => {
-                        tx3.blocking_send(Cmd::PlayPause).expect("bad send :(");
-                    }
-                    Char(c) => {
+                    Char(' ') => Some(tx3.blocking_send(Cmd::PlayPause)),
+                    Char('h') | KeyCode::Left => Some(tx3.blocking_send(Cmd::SeekRelative(-10))),
+                    Char('l') | KeyCode::Right => Some(tx3.blocking_send(Cmd::SeekRelative(10))),
+                    c => {
                         println_raw!("pressed: {c:?}, mods: {modifiers:?}");
+                        None
                     }
-                    _ => {}
+                };
+                if let Some(Err(err)) = res {
+                    eprintln_raw!("key error: {err}");
                 }
+            }
+            if done {
+                break;
             }
         }
     });
@@ -83,7 +89,6 @@ async fn ploop(mut queue: Receiver<Cmd>) {
         if let Err(err) = p.send(cmd).await {
             eprintln_raw!("{err}");
         }
-
     }
 }
 
