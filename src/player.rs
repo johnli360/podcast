@@ -63,10 +63,10 @@ impl Player {
     fn pause(&mut self) {
         self.playbin
             .set_state(gst::State::Paused)
-            .expect("Unable to set the pipeline to the `Null` state");
+            .expect("Unable to set the pipeline to the `Paused` state");
     }
 
-    fn shutdown(&mut self) {
+    fn set_null(&mut self) {
         self.playbin
             .set_state(gst::State::Null)
             .expect("Unable to set the pipeline to the `Null` state");
@@ -85,9 +85,11 @@ impl Player {
         if let Some(current) = self.query_position() {
             let current = current.seconds();
             let new = if delta < 0 {
-                 current.checked_sub(delta.unsigned_abs()).unwrap_or(0)
+                current.checked_sub(delta.unsigned_abs()).unwrap_or(0)
             } else {
-                current.checked_add(delta.unsigned_abs()).unwrap_or(u64::MAX)
+                current
+                    .checked_add(delta.unsigned_abs())
+                    .unwrap_or(u64::MAX)
             };
             self.seek(new);
         } else {
@@ -148,24 +150,36 @@ pub fn parse_cmd(buf: &str) -> Option<Cmd> {
 
 fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
     match cmd {
-        Cmd::Play => {
-            player.play();
-        }
+        Cmd::Play => player.play(),
         Cmd::Pause => player.pause(),
         Cmd::PlayPause => player.play_pause(),
         Cmd::Queue(uri) => player.queue(&uri),
+        Cmd::Seek(pos) => player.seek(pos),
+        Cmd::SeekRelative(delta) => player.seek_relative(delta),
         Cmd::Shutdown | Cmd::Quit => {
-            player.shutdown();
+            player.set_null();
             return false;
-        }
-        Cmd::Seek(x) => {
-            player.seek(x);
-        }
-        Cmd::SeekRelative(delta) => {
-            player.seek_relative(delta);
         }
     }
     true
+}
+
+async fn report_pos(player: &mut Player) {
+    if player.playing {
+        if player.duration.is_none() {
+            player.duration = player.playbin.query_duration();
+        }
+
+        if let Some(position) = player.query_position() {
+            print_raw!("\r{position} / {}", player.duration.display());
+        } else {
+            eprintln_raw!("Could not query current position.")
+        }
+
+        if let Err(err) = std::io::stdout().flush() {
+            eprintln_raw!("failed flush: {err}");
+        }
+    }
 }
 
 pub async fn new() -> Sender<Cmd> {
@@ -178,35 +192,18 @@ pub async fn new() -> Sender<Cmd> {
 
         loop {
             select! {
-                Some(cmd) = rx.recv() => {
-                    println_raw!("new cmd: {cmd:?}");
-                    if !run_cmd(cmd, &mut player)  {
-                            return
-                    }
+            Some(cmd) = rx.recv() => {
+                println_raw!("new cmd: {cmd:?}");
+                if !run_cmd(cmd, &mut player)  {
+                        return
                 }
-                msg = bus_stream.next() => {
-                    if let Some(msg) = msg {
-                        handle_message(&mut player, &msg)
-                    }
+            }
+            msg = bus_stream.next() => {
+                if let Some(msg) = msg {
+                    handle_message(&mut player, &msg)
                 }
-                _ = interval.tick() => {
-                    if player.playing {
-                        if player.duration.is_none() {
-                            player.duration = player.playbin.query_duration();
-                        }
-
-                        if let Some(position) = player.query_position() {
-                            print_raw!("\r{position} / {}", player.duration.display());
-                        } else {
-                            eprintln_raw!("Could not query current position.")
-                        }
-
-                        if let Err(err) = std::io::stdout().flush() {
-                            eprintln_raw!("failed flush: {err}");
-                        }
-                    }
-                }
-
+            }
+            _ = interval.tick() => { report_pos(&mut player).await; }
             }
         }
     });
@@ -228,6 +225,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
         }
         MessageView::Eos(..) => {
             println_raw!("End-Of-Stream reached.");
+            player.set_null();
         }
         MessageView::DurationChanged(_) => {
             // The duration has changed, mark the current one as invalid

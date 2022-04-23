@@ -1,15 +1,13 @@
-use std::io::{stdout, Write};
+use std::io::stdout;
 
-use crossterm::event::{self, read, Event, KeyCode, KeyEvent};
+use crossterm::event::{read, Event, KeyCode, KeyEvent};
 
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal};
 
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-// use tokio::stream::StreamExt;
-// use std::sync::mpsc::{Receiver, Sender};
 
 #[macro_use]
 mod macros;
