@@ -85,7 +85,7 @@ impl Player {
         if let Some(current) = self.query_position() {
             let current = current.seconds();
             let new = if delta < 0 {
-                current.checked_sub(delta.unsigned_abs()).unwrap_or(0)
+                current.saturating_sub(delta.unsigned_abs())
             } else {
                 current
                     .checked_add(delta.unsigned_abs())
@@ -117,19 +117,19 @@ pub enum Cmd {
 }
 fn parse_cmd_arg(buf: &str) -> Option<Cmd> {
     if let Some((variant, Some(arg))) = buf
-        .split_once("(")
-        .and_then(|(variant, s)| Some((variant, s.strip_suffix(")"))))
+        .split_once('(')
+        .map(|(variant, s)| (variant, s.strip_suffix(')')))
     {
         println_raw!("variant: {variant}");
         match variant {
             // TODO: make more extensible somehow
             "queue" => return Some(Cmd::Queue(arg.into())),
-            "seek" => return arg.parse().ok().and_then(|arg| Some(Cmd::Seek(arg))),
+            "seek" => return arg.parse().ok().map(Cmd::Seek),
             "seek_relative" => {
                 return arg
                     .parse()
                     .ok()
-                    .and_then(|arg| Some(Cmd::SeekRelative(arg)))
+                    .map(Cmd::SeekRelative)
             }
             _ => {}
         }

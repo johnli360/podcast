@@ -35,6 +35,4 @@ pub fn do_stuff(mut stream: TcpStream) {
             ),
         };
     }
-
-    drop(buf);
 }
