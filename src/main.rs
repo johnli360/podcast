@@ -1,6 +1,6 @@
 use std::io::stdout;
 
-use crossterm::event::{read, Event, KeyCode, KeyEvent};
+use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
 
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal};
@@ -44,8 +44,22 @@ async fn main() -> Result<(), std::io::Error> {
                         Some(tx3.blocking_send(Cmd::Quit))
                     }
                     Char(' ') => Some(tx3.blocking_send(Cmd::PlayPause)),
-                    Char('h') | KeyCode::Left => Some(tx3.blocking_send(Cmd::SeekRelative(-10))),
-                    Char('l') | KeyCode::Right => Some(tx3.blocking_send(Cmd::SeekRelative(10))),
+                    Char('h') | Char('H') | KeyCode::Left => {
+                        let cmd = if modifiers.intersects(KeyModifiers::SHIFT) {
+                            Cmd::Prev
+                        } else {
+                            Cmd::SeekRelative(-10)
+                        };
+                        Some(tx3.blocking_send(cmd))
+                    }
+                    Char('l') | Char('L') | KeyCode::Right => {
+                        let cmd = if modifiers.intersects(KeyModifiers::SHIFT) {
+                            Cmd::Next
+                        } else {
+                            Cmd::SeekRelative(10)
+                        };
+                        Some(tx3.blocking_send(cmd))
+                    }
                     c => {
                         println_raw!("pressed: {c:?}, mods: {modifiers:?}");
                         None

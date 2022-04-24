@@ -4,6 +4,8 @@ use strum_macros::{AsStaticStr, Display};
 #[derive(Debug, EnumString, AsStaticStr, Display, PartialEq, Eq)]
 #[strum(serialize_all = "snake_case")]
 pub enum Cmd {
+    Next,
+    Prev,
     Play,
     Pause,
     PlayPause,

@@ -1,8 +1,8 @@
-use tokio_stream::StreamExt;
 use std::{io::Write, time::Duration};
 use tokio::{select, sync::mpsc::Sender, time};
+use tokio_stream::StreamExt;
 
-use super::Cmd;
+use super::{state::State, Cmd};
 
 pub async fn new() -> Sender<Cmd> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
@@ -43,7 +43,16 @@ fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
         Cmd::SeekRelative(delta) => player.seek_relative(delta),
         Cmd::Shutdown | Cmd::Quit => {
             player.set_null();
+            if let Err(err) = player.state.to_disc() {
+                eprintln_raw!("{err}");
+            }
             return false;
+        }
+        Cmd::Next => {
+            player.next();
+        }
+        Cmd::Prev => {
+            player.prev();
         }
     }
     true
@@ -81,7 +90,9 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
         }
         MessageView::Eos(..) => {
             println_raw!("End-Of-Stream reached.");
-            player.set_null();
+            if !player.next() {
+                player.set_null();
+            }
         }
         MessageView::DurationChanged(_) => {
             // The duration has changed, mark the current one as invalid
@@ -110,7 +121,11 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
                         let (seekable, start, end) = seeking.result();
                         player.seek_enabled = seekable;
                         if seekable {
-                            println_raw!("Seeking is ENABLED from {} to {}", start, end)
+                            println_raw!("Seeking is ENABLED from {} to {}", start, end);
+                            if let Some(pos) = player.pending_seek.take() {
+                                println_raw!("seeking to pending: {pos}");
+                                player.seek(pos);
+                            }
                         } else {
                             println_raw!("Seeking is DISABLED for this stream.")
                         }
@@ -128,56 +143,110 @@ use gst::prelude::*;
 use gstreamer as gst;
 
 pub struct Player {
-    /// Our one and only element
+    state: State,
     playbin: gst::Element,
-    /// Are we in the PLAYING state?
     playing: bool,
-    // Should we terminate execution?
-    // terminated : bool,
-    // observe: bool,
-    // thread: Option<JoinHandle<()>>,
-    /// Is seeking enabled for this media?
     seek_enabled: bool,
-    /// Have we performed the seek already?
+    pending_seek: Option<u64>,
     duration: Option<gst::ClockTime>,
+    current_uri: Option<String>,
 }
 
-// struct Observer{
 impl Player {
     fn new() -> Self {
         let playbin = gst::ElementFactory::make("playbin", Some("playbin"))
             .expect("Failed to create playbin element");
 
+        let state = State::from_disc().expect("failed to read state ajajaja");
         Player {
+            state,
+            pending_seek: None,
             playbin,
             playing: false,
-            // terminated: false,
-            // observe: false,
-            // thread: None,
-            // observer:
             seek_enabled: false,
             duration: gst::ClockTime::NONE,
+            current_uri: None,
         }
     }
 
-    fn queue(&self, uri: &str) {
+    fn set_uri(&mut self, uri: &str) {
+        self.current_uri = Some(uri.to_string());
         self.playbin.set_property("uri", uri);
     }
 
+    fn queue(&mut self, uri: &str) {
+        self.state.queue(uri);
+        self.state.print_queue();
+    }
+
     fn play(&mut self) {
+        if self.current_uri.is_none() {
+            if let Some(new) = self.state.pop_queue() {
+                self.set_uri(&new);
+                self.pending_seek = self.state.get_pos(new);
+            }
+        }
+
         if let Err(err) = self.playbin.set_state(gst::State::Playing) {
             eprintln_raw!("Unable to set the playbin to the `Playing` state: {err}");
         }
     }
 
+    fn report_playlist(&self) {
+        self.state.print_recent();
+        println_raw!("Current: {:?}", self.current_uri);
+        self.state.print_queue();
+    }
+
+    fn next(&mut self) -> bool {
+        if let Some(next) = self.state.pop_queue() {
+            self.pause();
+            self.set_null();
+            if let Some(uri) = &self.current_uri {
+                self.state.push_recent(uri);
+            }
+            self.duration = gst::ClockTime::NONE;
+            self.set_uri(&next);
+            if self.playing {
+                self.play();
+            }
+            self.report_playlist();
+            return true;
+        }
+        false
+    }
+
+    fn prev(&mut self) -> bool {
+        if let Some(next) = self.state.pop_recent() {
+            self.pause();
+            self.set_null();
+            if let Some(uri) = &self.current_uri {
+                self.state.queue_front(uri);
+            }
+            self.duration = gst::ClockTime::NONE;
+            self.set_uri(&next);
+            if self.playing {
+                self.play();
+            }
+            self.report_playlist();
+            return true;
+        }
+        false
+    }
+
     fn play_pause(&mut self) {
-        let state = if self.playing {
-            gst::State::Paused
+        if self.playing {
+            self.pause();
         } else {
-            gst::State::Playing
+            self.play();
         };
-        if let Err(err) = self.playbin.set_state(state) {
-            eprintln_raw!("Unable to set the playbin to `{state:?}`: {err}");
+    }
+
+    fn update_state(&mut self) {
+        if let Some(uri) = &self.current_uri {
+            if let Some(pos) = self.query_position() {
+                self.state.insert_playable(uri.to_string(), pos.seconds());
+            }
         }
     }
 
@@ -185,6 +254,7 @@ impl Player {
         self.playbin
             .set_state(gst::State::Paused)
             .expect("Unable to set the pipeline to the `Paused` state");
+        self.update_state();
     }
 
     fn set_null(&mut self) {
@@ -219,8 +289,5 @@ impl Player {
     }
     fn query_position(&self) -> Option<gst::ClockTime> {
         self.playbin.query_position::<gst::ClockTime>()
-        // .expect("Could not query current position.")
     }
 }
-
-
