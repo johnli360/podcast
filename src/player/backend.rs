@@ -180,12 +180,22 @@ impl Player {
     }
 
     fn play(&mut self) {
+        if self.playing {
+            return;
+        }
+
         if self.current_uri.is_none() {
             if let Some(new) = self.state.pop_queue() {
                 self.set_uri(&new);
-                self.pending_seek = self.state.get_pos(new);
+            } else {
+                println_raw!("nothing to play");
+                return;
             }
         }
+
+        let curi = self.current_uri.take().unwrap();
+        self.pending_seek = self.state.get_pos(&curi);
+        self.current_uri.replace(curi);
 
         if let Err(err) = self.playbin.set_state(gst::State::Playing) {
             eprintln_raw!("Unable to set the playbin to the `Playing` state: {err}");
