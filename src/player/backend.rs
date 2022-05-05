@@ -81,6 +81,13 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
 
     match msg.view() {
         MessageView::Error(err) => {
+            if err
+                .src()
+                .map(|src| src.path_string().to_string().contains("uridecodebin"))
+                .unwrap_or(false)
+            {
+                player.current_uri = None;
+            }
             println_raw!(
                 "Error received from element {:?}: {} ({:?})",
                 err.src().map(|s| s.path_string()),
@@ -157,7 +164,8 @@ impl Player {
         let playbin = gst::ElementFactory::make("playbin", Some("playbin"))
             .expect("Failed to create playbin element");
 
-        let state = State::from_disc().expect("failed to read state ajajaja");
+        let state = State::from_disc().expect("failed to read state");
+        state.print_queue();
         Player {
             state,
             pending_seek: None,
