@@ -114,9 +114,11 @@ async fn listen(queue: Sender<Cmd>, addr: &str) {
         match socket.read_to_string(&mut buf).await {
             Ok(n) => {
                 println_raw!("read {n} from socket");
-                if let Some(cmd) = player::parse_cmd(&buf) {
-                    if let Err(msg) = queue.send(cmd).await {
-                        eprintln_raw!("receiver dropped: {}", msg);
+                for line in buf.lines() {
+                    if let Some(cmd) = player::parse_cmd(line) {
+                        if let Err(msg) = queue.send(cmd).await {
+                            eprintln_raw!("receiver dropped: {}", msg);
+                        }
                     }
                 }
             }
