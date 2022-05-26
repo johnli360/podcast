@@ -226,6 +226,7 @@ impl Player {
             self.duration = gst::ClockTime::NONE;
             self.set_uri(&next);
             if self.playing {
+                self.playing = false;
                 self.play();
             }
             self.report_playlist();
@@ -269,10 +270,12 @@ impl Player {
     }
 
     fn pause(&mut self) {
-        self.playbin
-            .set_state(gst::State::Paused)
-            .expect("Unable to set the pipeline to the `Paused` state");
-        self.update_state();
+        if self.playing {
+            self.playbin
+                .set_state(gst::State::Paused)
+                .expect("Unable to set the pipeline to the `Paused` state");
+            self.update_state();
+        }
     }
 
     fn set_null(&mut self) {
