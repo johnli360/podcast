@@ -1,22 +1,29 @@
-use std::io::Stdout;
+use std::{collections::VecDeque, io::Stdout};
 
 use gstreamer::prelude::Displayable;
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
-    style::{Color, Style, Modifier},
+    style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
     Frame, Terminal,
 };
 
 use crate::player::Player;
-const TAB_TITLES: &[&str] = &["Player", "tab2"];
+const TAB_TITLES: &[&str] = &["Player", "Log"];
 
 pub struct UiState {
     pub tab_index: usize,
+    log: VecDeque<String>,
 }
 impl UiState {
+    pub fn new() -> UiState {
+        Self {
+            tab_index: 0,
+            log: VecDeque::new(),
+        }
+    }
     pub fn update(&mut self, event: UiUpdate) {
         match event {
             UiUpdate::Tab => {
@@ -24,6 +31,10 @@ impl UiState {
                 self.tab_index = new_index;
             }
         }
+    }
+
+    pub fn log_event(&mut self, msg: String) {
+        self.log.push_back(msg);
     }
 }
 
@@ -62,13 +73,14 @@ pub fn draw_ui(
         f.render_widget(tabs, chunks[0]);
 
         match ui_state.tab_index {
-            0 => draw_tab1(f, player, ui_state),
+            0 => draw_player_tab(f, player, ui_state),
+            1 => draw_event_log_tab(f, ui_state),
             _ => (),
         }
     });
 }
 
-fn draw_tab1<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &UiState) {
+fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &UiState) {
     let position = player
         .query_position()
         .map(|time| time.to_string())
@@ -115,45 +127,26 @@ fn draw_tab1<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &UiState)
         })
         .collect();
     let messages =
-        List::new(messages).block(Block::default().borders(Borders::ALL).title("Messages"));
+        List::new(messages).block(Block::default().borders(Borders::ALL).title("Playlist"));
     f.render_widget(messages, chunks[3]);
 }
 
-// use crate::player::backend::Player;
-// pub fn draw_ui(terminal: &mut Terminal<CrosstermBackend<Stdout>>, player: &Player) {
-// terminal.clear().expect("hmm clear failed");
-// if let Some(position) = player.query_position() {
-// print_raw!("\r{position} / {}", player.duration.display());
-// draw_ui(&mut player.terminal, player);
-// }
-// else {
-// eprintln_raw!("Could not query current position.")
-// }
+fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &UiState) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(3)
+        .constraints([Constraint::Min(2)].as_ref())
+        .split(f.size());
 
-/*     let _ = terminal.draw(|f| { */
-/* let chunks = Layout::default() */
-/* .direction(Direction::Vertical) */
-/* .margin(0) */
-/* .constraints( */
-/* [ */
-/* Constraint::Percentage(10), */
-/* Constraint::Percentage(80), */
-/* Constraint::Percentage(10), */
-/* ] */
-/* .as_ref(), */
-/* ) */
-/* .split(f.size()); */
-// let block = Block::default().title("Block").borders(Borders::ALL);
-
-// let position = player.query_position().unwrap_or("n\\a");
-// let text = format!("\r{position} / {}", player.duration.display());
-// let p = Paragraph::new(text).block(
-// Block::default()
-// .borders(Borders::ALL)
-// .style(Style::default().fg(Color::White)),
-// );
-// block.paragraph(p);
-// f.render_widget(p, chunks[0]);
-// f.render_widget(p, chunks[0]);
-// });
-// }
+    let events: Vec<ListItem> = ui_state
+        .log
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
+            ListItem::new(content)
+        })
+        .collect();
+    let events = List::new(events).block(Block::default().borders(Borders::ALL).title("Log"));
+    f.render_widget(events, chunks[0]);
+}

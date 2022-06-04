@@ -129,7 +129,8 @@ fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::J
                         None
                     }
                     c => {
-                        println_raw!("pressed: {c:?}, mods: {modifiers:?}");
+                        // println_raw!("pressed: {c:?}, mods: {modifiers:?}");
+
                         None
                     }
                 };

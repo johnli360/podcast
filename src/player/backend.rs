@@ -1,4 +1,4 @@
-use std::{io::Stdout, time::Duration};
+use std::time::Duration;
 use tokio::{
     select,
     sync::mpsc::{Receiver, Sender},
@@ -14,7 +14,7 @@ use super::{state::State, Cmd};
 pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
     tokio::spawn(async move {
-        let mut ui_state = UiState { tab_index: 0 };
+        let mut ui_state = UiState::new();
         let mut player = Player::new();
         let bus = player.playbin.bus().unwrap();
         let mut bus_stream = bus.stream();
@@ -30,14 +30,14 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
                 ui_state.update(ui_update);
             }
             Some(cmd) = rx.recv() => {
-                println_raw!("new cmd: {cmd:?}");
+                ui_state.log_event(format!("new cmd: {cmd:?}"));
                 if !run_cmd(cmd, &mut player)  {
                         return
                 }
             }
             msg = bus_stream.next() => {
                 if let Some(msg) = msg {
-                    handle_message(&mut player, &msg)
+                    handle_message(&mut player, &msg, &mut ui_state)
                 }
             }
             _ = interval.tick() => {
@@ -82,7 +82,7 @@ fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
     true
 }
 
-fn handle_message(player: &mut Player, msg: &gst::Message) {
+fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
     use gst::MessageView;
 
     match msg.view() {
@@ -94,15 +94,15 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
             {
                 player.current_uri = None;
             }
-            println_raw!(
+            ui.log_event(format!(
                 "Error received from element {:?}: {} ({:?})",
                 err.src().map(|s| s.path_string()),
                 err.error(),
                 err.debug()
-            );
+            ));
         }
         MessageView::Eos(..) => {
-            println_raw!("End-Of-Stream reached.");
+            ui.log_event("End-Of-Stream reached.".into());
             if !player.next() {
                 player.set_null();
             }
@@ -120,11 +120,11 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
                 let new_state = state_changed.current();
                 let old_state = state_changed.old();
 
-                println_raw!(
-                    "Pipeline state changed from {:?} to {:?}",
-                    old_state,
-                    new_state
-                );
+                // println_raw!(
+                ui.log_event(format!(
+                    "Pipeline state: {:?} -> {:?}",
+                    old_state, new_state
+                ));
 
                 player.playing = new_state == gst::State::Playing;
 
@@ -134,13 +134,14 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
                         let (seekable, start, end) = seeking.result();
                         player.seek_enabled = seekable;
                         if seekable {
-                            println_raw!("Seeking is ENABLED from {} to {}", start, end);
+                            ui.log_event(format!("Seeking is ENABLED from {} to {}", start, end));
                             if let Some(pos) = player.pending_seek.take() {
-                                println_raw!("seeking to pending: {pos}");
+                                // println_raw!("seeking to pending: {pos}");
+                                ui.log_event(format!("seeking to pending: {pos}"));
                                 player.seek(pos);
                             }
                         } else {
-                            println_raw!("Seeking is DISABLED for this stream.")
+                            ui.log_event(format!("Seeking is DISABLED for this stream."));
                         }
                     } else {
                         eprintln_raw!("Seeking query failed.")
