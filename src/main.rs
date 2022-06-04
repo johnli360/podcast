@@ -1,11 +1,11 @@
 use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
-use crossterm::terminal::{LeaveAlternateScreen, EnterAlternateScreen};
-use crossterm::{terminal, execute};
+use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::{execute, terminal};
 
 #[macro_use]
 mod macros;
 
-use podaemon::player::{Cmd, self};
+use podaemon::player::{self, Cmd};
 use podaemon::ui::UiUpdate;
 // use rss::Channel;
 use tokio::io::AsyncReadExt;
@@ -25,18 +25,20 @@ async fn main() -> Result<(), std::io::Error> {
     let tx2 = tx.clone();
     let tx3 = tx.clone();
     let (ui_tx, ui_rx) = mpsc::channel::<UiUpdate>(64);
+    let ui_tx2 = ui_tx.clone();
+    let ui_tx3 = ui_tx.clone();
 
     tokio::spawn(async {
-        listen(tx, "192.168.0.108:51234").await;
+        listen(tx, ui_tx, "192.168.0.108:51234").await;
     });
     tokio::spawn(async {
-        listen(tx2, "127.0.0.1:51234").await;
+        listen(tx2, ui_tx2, "127.0.0.1:51234").await;
     });
     if let Err(err) = terminal::enable_raw_mode() {
         eprintln_raw!("{err}");
     };
 
-    let key_thread = start_key_thread(tx3, ui_tx);
+    let key_thread = start_key_thread(tx3, ui_tx3);
     ploop(rx, ui_rx).await;
 
     key_thread.join().unwrap();
@@ -66,16 +68,24 @@ async fn ploop(mut queue: Receiver<Cmd>, ui_rx: Receiver<UiUpdate>) {
     }
 }
 
-async fn listen(queue: Sender<Cmd>, addr: &str) {
+async fn log(ui_tx: Sender<UiUpdate>, msg: String) {
+    if let Err(err) = ui_tx.send(UiUpdate::Log(msg)).await {
+        eprintln_raw!("{err}");
+    }
+}
+async fn listen(queue: Sender<Cmd>, ui_tx: Sender<UiUpdate>, addr: &str) {
     let listener = TcpListener::bind(addr).await.unwrap();
-    println_raw!("listening on: {}", listener.local_addr().unwrap());
+    log(
+        ui_tx,
+        format!("listening on: {}", listener.local_addr().unwrap()),
+    )
+    .await;
 
     let mut buf = String::new();
     while let Ok((mut socket, _addr)) = listener.accept().await {
-        println_raw!("new connection");
+
         match socket.read_to_string(&mut buf).await {
-            Ok(n) => {
-                println_raw!("read {n} from socket");
+            Ok(_n) => {
                 for line in buf.lines() {
                     if let Some(cmd) = player::parse_cmd(line) {
                         if let Err(msg) = queue.send(cmd).await {
@@ -124,13 +134,15 @@ fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::J
                     }
                     KeyCode::Tab => {
                         if let Err(err) = ui_tx.blocking_send(UiUpdate::Tab) {
+                        // println_raw!("new connection");
                             eprintln_raw!("key error: {err}");
                         };
                         None
                     }
                     c => {
-                        // println_raw!("pressed: {c:?}, mods: {modifiers:?}");
-
+                        if let Err(err) = ui_tx.blocking_send(UiUpdate::Log(format!("pressed: {c:?}, mods: {modifiers:?}"))) {
+                            eprintln_raw!("{err}");
+                        }
                         None
                     }
                 };

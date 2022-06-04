@@ -1,9 +1,8 @@
 use std::{collections::VecDeque, io::Stdout};
 
-use gstreamer::prelude::Displayable;
 use tui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
@@ -30,16 +29,23 @@ impl UiState {
                 let new_index = (self.tab_index + 1) % TAB_TITLES.len();
                 self.tab_index = new_index;
             }
+            UiUpdate::Log(msg) => {
+                self.log_event(msg);
+            }
         }
     }
 
     pub fn log_event(&mut self, msg: String) {
-        self.log.push_back(msg);
+        self.log.push_front(msg);
+        if self.log.len() > 40 {
+            self.log.pop_back();
+        }
     }
 }
 
 pub enum UiUpdate {
     Tab,
+    Log(String),
 }
 
 pub fn draw_ui(
@@ -81,10 +87,6 @@ pub fn draw_ui(
 }
 
 fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &UiState) {
-    let position = player
-        .query_position()
-        .map(|time| time.to_string())
-        .unwrap_or_else(|| "n\\a".to_string());
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
@@ -104,17 +106,7 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
         .block(Block::default().borders(Borders::ALL).title("Input"));
     f.render_widget(input, chunks[1]);
 
-    // .style(match app.input_mode {
-    // InputMode::Normal => Style::default(),
-    // InputMode::Editing => Style::default().fg(Color::Yellow),
-    let text = format!("\r{position} / {}", player.duration.display());
-    let progress = Paragraph::new(text).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .style(Style::default().fg(Color::White)),
-    );
-    // block.paragraph(p);
-    f.render_widget(progress, chunks[2]);
+    draw_current_info(f, chunks[2], player);
 
     let messages: Vec<ListItem> = player
         .state
@@ -129,6 +121,42 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
     let messages =
         List::new(messages).block(Block::default().borders(Borders::ALL).title("Playlist"));
     f.render_widget(messages, chunks[3]);
+}
+
+fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player) {
+    let position = player
+        .query_position()
+        .map(|time| format!("{:.0}", time))
+        .unwrap_or_else(|| "n\\a".to_string());
+
+    let duration = player
+        .duration
+        .map(|time| format!("{:.0}", time))
+        .unwrap_or_else(|| "n\\a".to_string());
+
+    let p_length = position.len() + duration.len() + 5;
+    let space = if p_length >= chunk.width as usize {
+        0
+    } else {
+        chunk.width as usize - p_length
+    };
+    let uri = if let Some(uri) = &player.current_uri {
+        if uri.len() > space {
+            &uri[uri.len() - space..]
+        } else {
+            uri
+        }
+    } else {
+        ""
+    };
+
+    let text = format!("{uri} {position} / {duration}");
+    let progress = Paragraph::new(text).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .style(Style::default().fg(Color::White)),
+    );
+    f.render_widget(progress, chunk);
 }
 
 fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &UiState) {

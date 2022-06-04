@@ -120,7 +120,6 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
                 let new_state = state_changed.current();
                 let old_state = state_changed.old();
 
-                // println_raw!(
                 ui.log_event(format!(
                     "Pipeline state: {:?} -> {:?}",
                     old_state, new_state
@@ -172,7 +171,6 @@ impl Player {
             .expect("Failed to create playbin element");
 
         let state = State::from_disc().expect("failed to read state");
-        state.print_queue();
 
         Player {
             state,
@@ -192,7 +190,7 @@ impl Player {
 
     fn queue(&mut self, uri: &str) {
         self.state.queue(uri);
-        self.state.print_queue();
+        // self.state.print_queue();
     }
 
     fn play(&mut self) {
@@ -218,11 +216,11 @@ impl Player {
         }
     }
 
-    fn report_playlist(&self) {
-        self.state.print_recent();
-        println_raw!("Current: {:?}", self.current_uri);
-        self.state.print_queue();
-    }
+    // fn report_playlist(&self) {
+        // self.state.print_recent();
+        // println_raw!("Current: {:?}", self.current_uri);
+        // self.state.print_queue();
+    // }
 
     fn next(&mut self) -> bool {
         if let Some(next) = self.state.pop_queue() {
@@ -237,7 +235,6 @@ impl Player {
                 self.playing = false;
                 self.play();
             }
-            self.report_playlist();
             return true;
         }
         false
@@ -255,7 +252,6 @@ impl Player {
             if self.playing {
                 self.play();
             }
-            self.report_playlist();
             return true;
         }
         false

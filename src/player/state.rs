@@ -79,37 +79,37 @@ impl State {
         self.uris.get(uri).map(|p| p.progress)
     }
 
-    pub fn print_recent(&self) {
-        if let Err(err) = terminal::disable_raw_mode() {
-            eprintln!("{err}");
-        };
+/*     pub fn print_recent(&self) { */
+        /* if let Err(err) = terminal::disable_raw_mode() { */
+            /* eprintln!("{err}"); */
+        /* }; */
 
-        println!("----------- RECENT ------------ ");
-        self.recent
-            .iter()
-            .enumerate()
-            .for_each(|(i, uri)| println!("{i}: {uri}"));
-        println!("------------------------------- ");
+        /* println!("----------- RECENT ------------ "); */
+        /* self.recent */
+            /* .iter() */
+            /* .enumerate() */
+            /* .for_each(|(i, uri)| println!("{i}: {uri}")); */
+        /* println!("------------------------------- "); */
 
-        if let Err(err) = terminal::enable_raw_mode() {
-            eprintln!("{err}");
-        };
-    }
+        /* if let Err(err) = terminal::enable_raw_mode() { */
+            /* eprintln!("{err}"); */
+        /* }; */
+    /* } */
 
-    pub fn print_queue(&self) {
-        if let Err(err) = terminal::disable_raw_mode() {
-            eprintln!("{err}");
-        };
+    /* pub fn print_queue(&self) { */
+        /* if let Err(err) = terminal::disable_raw_mode() { */
+            /* eprintln!("{err}"); */
+        /* }; */
 
-        println!("----------- QUEUE ------------- ");
-        self.queue
-            .iter()
-            .enumerate()
-            .for_each(|(i, uri)| println!("{i}: {uri}"));
-        println!("------------------------------- ");
+        /* println!("----------- QUEUE ------------- "); */
+        /* self.queue */
+            /* .iter() */
+            /* .enumerate() */
+            /* .for_each(|(i, uri)| println!("{i}: {uri}")); */
+        /* println!("------------------------------- "); */
 
-        if let Err(err) = terminal::enable_raw_mode() {
-            eprintln!("{err}");
-        };
-    }
+        /* if let Err(err) = terminal::enable_raw_mode() { */
+            /* eprintln!("{err}"); */
+        /* }; */
+    /* } */
 }
