@@ -6,6 +6,7 @@ use crossterm::{terminal, execute};
 mod macros;
 
 use podaemon::player::{Cmd, self};
+use podaemon::ui::UiUpdate;
 // use rss::Channel;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
@@ -23,6 +24,7 @@ async fn main() -> Result<(), std::io::Error> {
     let (tx, rx) = mpsc::channel::<Cmd>(64);
     let tx2 = tx.clone();
     let tx3 = tx.clone();
+    let (ui_tx, ui_rx) = mpsc::channel::<UiUpdate>(64);
 
     tokio::spawn(async {
         listen(tx, "192.168.0.108:51234").await;
@@ -34,8 +36,8 @@ async fn main() -> Result<(), std::io::Error> {
         eprintln_raw!("{err}");
     };
 
-    let key_thread = start_key_thread(tx3);
-    ploop(rx).await;
+    let key_thread = start_key_thread(tx3, ui_tx);
+    ploop(rx, ui_rx).await;
 
     key_thread.join().unwrap();
 
@@ -47,8 +49,8 @@ async fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-async fn ploop(mut queue: Receiver<Cmd>) {
-    let p: Sender<Cmd> = player::new().await;
+async fn ploop(mut queue: Receiver<Cmd>, ui_rx: Receiver<UiUpdate>) {
+    let p: Sender<Cmd> = player::new(ui_rx).await;
     while let Some(cmd) = queue.recv().await {
         if cmd == Cmd::Quit {
             if let Err(err) = p.send(player::Cmd::Shutdown).await {
@@ -89,7 +91,7 @@ async fn listen(queue: Sender<Cmd>, addr: &str) {
     println_raw!("loop ended");
 }
 
-fn start_key_thread(tx3: Sender<Cmd>) -> std::thread::JoinHandle<()> {
+fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let mut done = false;
         while let Ok(c) = read() {
@@ -119,6 +121,12 @@ fn start_key_thread(tx3: Sender<Cmd>) -> std::thread::JoinHandle<()> {
                             Cmd::SeekRelative(10)
                         };
                         Some(tx3.blocking_send(cmd))
+                    }
+                    KeyCode::Tab => {
+                        if let Err(err) = ui_tx.blocking_send(UiUpdate::Tab) {
+                            eprintln_raw!("key error: {err}");
+                        };
+                        None
                     }
                     c => {
                         println_raw!("pressed: {c:?}, mods: {modifiers:?}");
