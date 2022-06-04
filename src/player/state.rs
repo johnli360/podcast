@@ -17,7 +17,7 @@ struct Playable {
 pub struct State {
     uris: HashMap<String, Playable>,
     #[serde(default = "VecDeque::new")]
-    queue: VecDeque<String>,
+    pub queue: VecDeque<String>,
     #[serde(default = "new_recent")]
     recent: VecDeque<String>,
 }

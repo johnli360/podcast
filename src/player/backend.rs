@@ -1,6 +1,14 @@
-use std::{io::Write, time::Duration};
+use std::{io::Stdout, time::Duration};
 use tokio::{select, sync::mpsc::Sender, time};
 use tokio_stream::StreamExt;
+use tui::{
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Modifier, Style},
+    text::{Span, Spans},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
+    Terminal,
+};
 
 use super::{state::State, Cmd};
 
@@ -25,7 +33,12 @@ pub async fn new() -> Sender<Cmd> {
                     handle_message(&mut player, &msg)
                 }
             }
-            _ = interval.tick() => { report_pos(&mut player).await; }
+            _ = interval.tick() => {
+                if player.duration.is_none() {
+                    player.duration = player.playbin.query_duration();
+                }
+                draw_ui(&mut player);
+            }
             }
         }
     });
@@ -62,22 +75,81 @@ fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
     true
 }
 
-async fn report_pos(player: &mut Player) {
-    if player.playing {
-        if player.duration.is_none() {
-            player.duration = player.playbin.query_duration();
-        }
+pub fn draw_ui(player: &mut Player) {
+    // let mut terminal = (*player).terminal;
+    let position = player
+        .query_position()
+        .map(|time| time.to_string())
+        .unwrap_or_else(|| "n\\a".to_string());
 
-        if let Some(position) = player.query_position() {
-            print_raw!("\r{position} / {}", player.duration.display());
-        } else {
-            eprintln_raw!("Could not query current position.")
-        }
+    let Player { terminal, .. } = player;
+    let _ = terminal.draw(|f| {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints(
+                [
+                    Constraint::Length(2),
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                    Constraint::Min(1),
+                ]
+                .as_ref(),
+            )
+            .split(f.size());
 
-        if let Err(err) = std::io::stdout().flush() {
-            eprintln_raw!("failed flush: {err}");
-        }
-    }
+        let titles = vec!["tab1", "tab2"]
+            .iter()
+            .map(|t| {
+                let (first, rest) = t.split_at(1);
+                Spans::from(vec![
+                    Span::styled(first, Style::default().fg(Color::Yellow)),
+                    Span::styled(rest, Style::default().fg(Color::Green)),
+                ])
+            })
+            .collect();
+        let tabs = Tabs::new(titles)
+            .block(Block::default().borders(Borders::BOTTOM))
+            .select(0)
+            .style(Style::default().fg(Color::Cyan))
+            .highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .bg(Color::Black),
+            );
+        f.render_widget(tabs, chunks[0]);
+
+        let input = Paragraph::new("test".to_string())
+            .style(Style::default().fg(Color::Yellow))
+            .block(Block::default().borders(Borders::ALL).title("Input"));
+        f.render_widget(input, chunks[1]);
+
+        // .style(match app.input_mode {
+        // InputMode::Normal => Style::default(),
+        // InputMode::Editing => Style::default().fg(Color::Yellow),
+        let text = format!("\r{position} / {}", player.duration.display());
+        let progress = Paragraph::new(text).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().fg(Color::White)),
+        );
+        // block.paragraph(p);
+        f.render_widget(progress, chunks[2]);
+
+        let messages: Vec<ListItem> = player
+            .state
+            .queue
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
+                ListItem::new(content)
+            })
+            .collect();
+        let messages =
+            List::new(messages).block(Block::default().borders(Borders::ALL).title("Messages"));
+        f.render_widget(messages, chunks[3]);
+    });
 }
 
 fn handle_message(player: &mut Player, msg: &gst::Message) {
@@ -161,6 +233,7 @@ pub struct Player {
     pending_seek: Option<u64>,
     duration: Option<gst::ClockTime>,
     current_uri: Option<String>,
+    terminal: Terminal<CrosstermBackend<Stdout>>,
 }
 
 impl Player {
@@ -170,6 +243,10 @@ impl Player {
 
         let state = State::from_disc().expect("failed to read state");
         state.print_queue();
+
+        let stdout = std::io::stdout();
+        let backend = CrosstermBackend::new(stdout);
+        let terminal = Terminal::new(backend).expect("hmm2");
         Player {
             state,
             pending_seek: None,
@@ -178,6 +255,7 @@ impl Player {
             seek_enabled: false,
             duration: gst::ClockTime::NONE,
             current_uri: None,
+            terminal,
         }
     }
 

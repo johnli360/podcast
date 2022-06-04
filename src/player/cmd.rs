@@ -45,6 +45,7 @@ fn parse_cmd_arg(buf: &str) -> Option<Cmd> {
             }
             _ => {}
         }
+        println_raw!("{variant},{arg}");
     }
     None
 }

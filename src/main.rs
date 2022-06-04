@@ -1,10 +1,12 @@
-use std::io::stdout;
-
 use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::terminal::{LeaveAlternateScreen, EnterAlternateScreen};
+use crossterm::{terminal, execute};
 
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
-use crossterm::{execute, terminal};
+#[macro_use]
+mod macros;
 
+use podaemon::player::{Cmd, self};
+// use rss::Channel;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self, Receiver, Sender};
