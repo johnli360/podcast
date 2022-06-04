@@ -42,6 +42,10 @@ fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
         Cmd::Seek(pos) => player.seek(pos),
         Cmd::SeekRelative(delta) => player.seek_relative(delta),
         Cmd::Shutdown | Cmd::Quit => {
+            player.update_state();
+            if let Some(uri) = &player.current_uri {
+                player.state.queue_front(uri);
+            }
             player.set_null();
             if let Err(err) = player.state.to_disc() {
                 eprintln_raw!("{err}");
