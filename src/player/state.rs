@@ -75,8 +75,8 @@ impl State {
         self.recent.push_back(uri.to_string());
     }
 
-    pub fn get_pos(&self, uri: String) -> Option<u64> {
-        self.uris.get(&uri).map(|p| p.progress)
+    pub fn get_pos(&self, uri: &str) -> Option<u64> {
+        self.uris.get(uri).map(|p| p.progress)
     }
 
     pub fn print_recent(&self) {
