@@ -9,10 +9,9 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-#[macro_use]
-mod macros;
-mod player;
-use player::*;
+use podaemon::dir::get_file;
+
+use std::io::stdout;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
