@@ -33,48 +33,7 @@ async fn main() -> Result<(), std::io::Error> {
         eprintln_raw!("{err}");
     };
 
-    let key_thread = std::thread::spawn(move || {
-        let mut done = false;
-        while let Ok(c) = read() {
-            if let Event::Key(KeyEvent { code, modifiers }) = c {
-                use KeyCode::Char;
-                let res = match code {
-                    Char('q') => {
-                        done = true;
-                        Some(tx3.blocking_send(Cmd::Quit))
-                    }
-                    Char(' ') => Some(tx3.blocking_send(Cmd::PlayPause)),
-                    Char('h') | Char('H') | KeyCode::Left => {
-                        let cmd = if modifiers.intersects(KeyModifiers::SHIFT) {
-                            Cmd::Prev
-                        } else {
-                            Cmd::SeekRelative(-10)
-                        };
-                        Some(tx3.blocking_send(cmd))
-                    }
-                    Char('l') | Char('L') | KeyCode::Right => {
-                        let cmd = if modifiers.intersects(KeyModifiers::SHIFT) {
-                            Cmd::Next
-                        } else {
-                            Cmd::SeekRelative(10)
-                        };
-                        Some(tx3.blocking_send(cmd))
-                    }
-                    c => {
-                        println_raw!("pressed: {c:?}, mods: {modifiers:?}");
-                        None
-                    }
-                };
-                if let Some(Err(err)) = res {
-                    eprintln_raw!("key error: {err}");
-                }
-            }
-            if done {
-                break;
-            }
-        }
-    });
-
+    let key_thread = start_key_thread(tx3);
     ploop(rx).await;
 
     key_thread.join().unwrap();
@@ -127,4 +86,51 @@ async fn listen(queue: Sender<Cmd>, addr: &str) {
         buf.clear();
     }
     println_raw!("loop ended");
+}
+
+fn start_key_thread(tx3: Sender<Cmd>) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let mut done = false;
+        while let Ok(c) = read() {
+            if let Event::Key(KeyEvent { code, modifiers }) = c {
+                use KeyCode::Char;
+                let res = match code {
+                    Char('q') => {
+                        done = true;
+                        Some(tx3.blocking_send(Cmd::Quit))
+                    }
+                    Char(' ') => Some(tx3.blocking_send(Cmd::PlayPause)),
+                    Char('o') => get_file()
+                        .map(|p| Cmd::Queue(p))
+                        .map(|c| tx3.blocking_send(c)),
+                    Char('h') | Char('H') | KeyCode::Left => {
+                        let cmd = if modifiers.intersects(KeyModifiers::SHIFT) {
+                            Cmd::Prev
+                        } else {
+                            Cmd::SeekRelative(-10)
+                        };
+                        Some(tx3.blocking_send(cmd))
+                    }
+                    Char('l') | Char('L') | KeyCode::Right => {
+                        let cmd = if modifiers.intersects(KeyModifiers::SHIFT) {
+                            Cmd::Next
+                        } else {
+                            Cmd::SeekRelative(10)
+                        };
+                        Some(tx3.blocking_send(cmd))
+                    }
+                    c => {
+                        println_raw!("pressed: {c:?}, mods: {modifiers:?}");
+                        None
+                    }
+                };
+                if let Some(Err(err)) = res {
+                    eprintln_raw!("key error: {err}");
+                }
+            }
+            if done {
+                break;
+            }
+        }
+    })
 }
