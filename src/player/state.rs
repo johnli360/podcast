@@ -20,13 +20,14 @@ pub struct State {
     #[serde(default = "new_recent")]
     pub recent: VecDeque<String>,
 }
+
 fn new_recent() -> VecDeque<String> {
     VecDeque::with_capacity(32)
 }
 
 impl State {
     pub fn from_disc() -> Result<Self, Box<dyn Error>> {
-        let state = if let Ok(file) = File::open(FILE) {
+        let mut state = if let Ok(file) = File::open(FILE) {
             let reader = BufReader::new(file);
             serde_json::from_reader(reader)?
         } else {
@@ -36,6 +37,7 @@ impl State {
                 uris: HashMap::new(),
             }
         };
+        state.recent.reserve(32);
         Ok(state)
     }
 

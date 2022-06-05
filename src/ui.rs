@@ -95,8 +95,8 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
             [
                 Constraint::Length(2),
                 // Constraint::Length(3),
-                Constraint::Length(3),
                 Constraint::Length(5),
+                Constraint::Length(3),
                 // Constraint::Min(1),
                 Constraint::Min(1),
             ]
@@ -104,25 +104,27 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
         )
         .split(f.size());
 
-    draw_current_info(f, chunks[1], player);
 
     let recent: Vec<ListItem> = player
         .state
         .recent
         .iter()
+        .take(3)
         .enumerate()
         .map(|(i, m)| {
             let content = vec![Spans::from(Span::raw(format!(
                 "{}: {}",
                 i,
-                last_n(m, chunks[2].width.checked_sub(5).unwrap_or(0))
+                last_n(m, chunks[1].width.checked_sub(5).unwrap_or(0))
             )))];
             ListItem::new(content)
         })
         .collect();
     let recent = List::new(recent).block(Block::default().borders(Borders::ALL).title("Recent"));
-    f.render_widget(recent, chunks[2]);
+    // println!("rlen: {}", player.state.recent.len());
+    f.render_widget(recent, chunks[1]);
 
+    draw_current_info(f, chunks[2], player);
     let playlist: Vec<ListItem> = player
         .state
         .queue
