@@ -55,27 +55,18 @@ pub fn draw_ui(
 ) {
     let _ = terminal.draw(|f| {
         let chunks = Layout::default()
-            .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
+            .margin(1)
+            .constraints([Constraint::Length(2), Constraint::Min(1)].as_ref())
             .split(f.size());
         let titles = TAB_TITLES
             .iter()
-            .map(|t| {
-                let (first, rest) = t.split_at(1);
-                Spans::from(vec![
-                    Span::styled(first, Style::default().fg(Color::Yellow)),
-                    Span::styled(rest, Style::default().fg(Color::Green)),
-                ])
-            })
+            .map(|t| Spans::from(vec![Span::styled(*t, Style::default().fg(Color::White))]))
             .collect();
         let tabs = Tabs::new(titles)
             .block(Block::default().borders(Borders::BOTTOM))
             .select(ui_state.tab_index)
-            .style(Style::default().fg(Color::Cyan))
-            .highlight_style(
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .bg(Color::Black),
-            );
+            .style(Style::default().fg(Color::White))
+            .highlight_style(Style::default().fg(Color::Yellow));
         f.render_widget(tabs, chunks[0]);
 
         match ui_state.tab_index {
