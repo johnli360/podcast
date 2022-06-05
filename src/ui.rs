@@ -4,7 +4,7 @@ use gstreamer::State;
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
     Frame, Terminal,
@@ -78,11 +78,12 @@ pub fn draw_ui(
     });
 }
 
-fn last_n(s: &str, n: u16) -> &str {
-    if n as usize >= s.len() {
+fn last_n(s: &str, n: impl Into<usize>) -> &str {
+    let n = n.into();
+    if n >= s.len() {
         s
     } else {
-        &s[s.len() - n as usize..]
+        &s[s.len() - n..]
     }
 }
 
@@ -114,7 +115,7 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
             let content = vec![Spans::from(Span::raw(format!(
                 "{}: {}",
                 i,
-                last_n(m, chunks[2].width - 5)
+                last_n(m, chunks[2].width.checked_sub(5).unwrap_or(0))
             )))];
             ListItem::new(content)
         })
@@ -131,7 +132,7 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
             let content = vec![Spans::from(Span::raw(format!(
                 "{}: {}",
                 i,
-                last_n(m, chunks[3].width - 5)
+                last_n(m, chunks[3].width.checked_sub(5).unwrap_or(0))
             )))];
             ListItem::new(content)
         })
@@ -159,11 +160,7 @@ fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player)
         chunk.width as usize - p_length
     };
     let uri = if let Some(uri) = &player.current_uri {
-        if uri.len() > space {
-            &uri[uri.len() - space..]
-        } else {
-            uri
-        }
+        last_n(uri, space)
     } else {
         ""
     };
@@ -178,7 +175,7 @@ fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player)
     f.render_widget(progress, chunk);
 }
 
-fn state_to_str(state: State)-> String {
+fn state_to_str(state: State) -> String {
     match state {
         State::VoidPending => "Void",
         State::Null => "Null",
@@ -186,7 +183,8 @@ fn state_to_str(state: State)-> String {
         State::Paused => "Paused",
         State::Playing => "Playing",
         _ => "Unknown",
-    }.to_string()
+    }
+    .to_string()
 }
 
 fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &UiState) {

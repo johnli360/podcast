@@ -66,7 +66,6 @@ impl State {
         self.recent.pop_back()
     }
 
-
     pub fn push_recent(&mut self, uri: &str) {
         if self.recent.len() == self.recent.capacity() {
             self.recent.pop_front();
@@ -77,5 +76,4 @@ impl State {
     pub fn get_pos(&self, uri: &str) -> Option<u64> {
         self.uris.get(uri).map(|p| p.progress)
     }
-
 }

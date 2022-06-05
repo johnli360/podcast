@@ -37,17 +37,10 @@ fn parse_cmd_arg(buf: &str) -> Option<Cmd> {
             // TODO: make more extensible somehow
             "queue" => return Some(Cmd::Queue(arg.into())),
             "seek" => return arg.parse().ok().map(Cmd::Seek),
-            "seek_relative" => {
-                return arg
-                    .parse()
-                    .ok()
-                    .map(Cmd::SeekRelative)
-            }
+            "seek_relative" => return arg.parse().ok().map(Cmd::SeekRelative),
             _ => {}
         }
         println_raw!("{variant},{arg}");
     }
     None
 }
-
-

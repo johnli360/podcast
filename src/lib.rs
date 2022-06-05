@@ -7,8 +7,8 @@ use std::str;
 #[macro_use]
 mod macros;
 pub mod dir;
-pub mod ui;
 pub mod player;
+pub mod ui;
 
 pub fn read_lines(stream: TcpStream) -> Vec<String> {
     let reader = BufReader::new(stream);

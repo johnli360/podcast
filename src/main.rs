@@ -83,7 +83,6 @@ async fn listen(queue: Sender<Cmd>, ui_tx: Sender<UiUpdate>, addr: &str) {
 
     let mut buf = String::new();
     while let Ok((mut socket, _addr)) = listener.accept().await {
-
         match socket.read_to_string(&mut buf).await {
             Ok(_n) => {
                 for line in buf.lines() {
@@ -134,13 +133,15 @@ fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::J
                     }
                     KeyCode::Tab => {
                         if let Err(err) = ui_tx.blocking_send(UiUpdate::Tab) {
-                        // println_raw!("new connection");
+                            // println_raw!("new connection");
                             eprintln_raw!("key error: {err}");
                         };
                         None
                     }
                     c => {
-                        if let Err(err) = ui_tx.blocking_send(UiUpdate::Log(format!("pressed: {c:?}, mods: {modifiers:?}"))) {
+                        if let Err(err) = ui_tx.blocking_send(UiUpdate::Log(format!(
+                            "pressed: {c:?}, mods: {modifiers:?}"
+                        ))) {
                             eprintln_raw!("{err}");
                         }
                         None

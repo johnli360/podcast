@@ -10,7 +10,6 @@ macro_rules! print_raw {
     })
 }
 
-
 macro_rules! println_raw {
      () => ({
         if let Err(err) = crossterm::terminal::disable_raw_mode() {
