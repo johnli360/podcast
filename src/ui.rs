@@ -1,5 +1,6 @@
 use std::{collections::VecDeque, io::Stdout};
 
+use gstreamer::State;
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
@@ -170,11 +171,22 @@ fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player)
     let text = format!("{uri} {position} / {duration}");
     let progress = Paragraph::new(text).block(
         Block::default()
-            .title("Playing")
+            .title(state_to_str(player.play_state))
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::White)),
     );
     f.render_widget(progress, chunk);
+}
+
+fn state_to_str(state: State)-> String {
+    match state {
+        State::VoidPending => "Void",
+        State::Null => "Null",
+        State::Ready => "Ready",
+        State::Paused => "Paused",
+        State::Playing => "Playing",
+        _ => "Unknown",
+    }.to_string()
 }
 
 fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &UiState) {

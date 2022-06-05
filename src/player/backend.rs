@@ -126,6 +126,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
                 ));
 
                 player.playing = new_state == gst::State::Playing;
+                player.play_state = new_state;
 
                 if player.playing {
                     let mut seeking = gst::query::Seeking::new(gst::Format::Time);
@@ -161,6 +162,7 @@ pub struct Player {
     pub current_uri: Option<String>,
     playbin: gst::Element,
     playing: bool,
+    pub play_state: gst::State,
     seek_enabled: bool,
     pending_seek: Option<u64>,
 }
@@ -173,6 +175,7 @@ impl Player {
         let state = State::from_disc().expect("failed to read state");
 
         Player {
+            play_state: gst::State::Null,
             state,
             pending_seek: None,
             playbin,
@@ -190,7 +193,6 @@ impl Player {
 
     fn queue(&mut self, uri: &str) {
         self.state.queue(uri);
-        // self.state.print_queue();
     }
 
     fn play(&mut self) {
