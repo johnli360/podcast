@@ -56,8 +56,8 @@ pub fn draw_ui(
 ) {
     let _ = terminal.draw(|f| {
         let chunks = Layout::default()
-            .margin(1)
-            .constraints([Constraint::Length(2), Constraint::Min(1)].as_ref())
+            .margin(0)
+            .constraints([  Constraint::Length(2), Constraint::Min(1)].as_ref())
             .split(f.size());
         let titles = TAB_TITLES
             .iter()
@@ -93,8 +93,8 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
         .margin(0)
         .constraints(
             [
-                // Constraint::Length(2),
-                Constraint::Length(3),
+                Constraint::Length(2),
+                // Constraint::Length(3),
                 Constraint::Length(3),
                 Constraint::Length(5),
                 // Constraint::Min(1),
@@ -153,7 +153,7 @@ fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player)
         .map(|time| format!("{:.0}", time))
         .unwrap_or_else(|| "n\\a".to_string());
 
-    let p_length = position.len() + duration.len() + 5;
+    let p_length = position.len() + duration.len() + 6;
     let space = if p_length >= chunk.width as usize {
         0
     } else {
@@ -190,8 +190,8 @@ fn state_to_str(state: State) -> String {
 fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(3)
-        .constraints([Constraint::Min(2)].as_ref())
+        .margin(0)
+        .constraints([Constraint::Length(2), Constraint::Min(2)].as_ref())
         .split(f.size());
 
     let events: Vec<ListItem> = ui_state
@@ -204,5 +204,5 @@ fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &UiState) {
         })
         .collect();
     let events = List::new(events).block(Block::default().borders(Borders::ALL).title("Log"));
-    f.render_widget(events, chunks[0]);
+    f.render_widget(events, chunks[1]);
 }

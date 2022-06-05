@@ -28,6 +28,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
             select! {
             Some(ui_update) = ui_rx.recv() => {
                 ui_state.update(ui_update);
+                draw_ui(&mut terminal, &mut player, &ui_state);
             }
             Some(cmd) = rx.recv() => {
                 ui_state.log_event(format!("new cmd: {cmd:?}"));

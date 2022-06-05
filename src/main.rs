@@ -133,7 +133,6 @@ fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::J
                     }
                     KeyCode::Tab => {
                         if let Err(err) = ui_tx.blocking_send(UiUpdate::Tab) {
-                            // println_raw!("new connection");
                             eprintln_raw!("key error: {err}");
                         };
                         None

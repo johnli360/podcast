@@ -32,7 +32,6 @@ fn parse_cmd_arg(buf: &str) -> Option<Cmd> {
         .split_once('(')
         .map(|(variant, s)| (variant, s.strip_suffix(')')))
     {
-        println_raw!("variant: {variant}");
         match variant {
             // TODO: make more extensible somehow
             "queue" => return Some(Cmd::Queue(arg.into())),
@@ -40,7 +39,6 @@ fn parse_cmd_arg(buf: &str) -> Option<Cmd> {
             "seek_relative" => return arg.parse().ok().map(Cmd::SeekRelative),
             _ => {}
         }
-        println_raw!("{variant},{arg}");
     }
     None
 }
