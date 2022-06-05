@@ -77,41 +77,67 @@ pub fn draw_ui(
     });
 }
 
+fn last_n(s: &str, n: u16) -> &str {
+    if n as usize >= s.len() {
+        s
+    } else {
+        &s[s.len() - n as usize..]
+    }
+}
+
 fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(1)
+        .margin(0)
         .constraints(
             [
-                Constraint::Length(2),
+                // Constraint::Length(2),
                 Constraint::Length(3),
                 Constraint::Length(3),
+                Constraint::Length(5),
+                // Constraint::Min(1),
                 Constraint::Min(1),
             ]
             .as_ref(),
         )
         .split(f.size());
 
-    let input = Paragraph::new("test".to_string())
-        .style(Style::default().fg(Color::Yellow))
-        .block(Block::default().borders(Borders::ALL).title("Input"));
-    f.render_widget(input, chunks[1]);
+    draw_current_info(f, chunks[1], player);
 
-    draw_current_info(f, chunks[2], player);
+    let recent: Vec<ListItem> = player
+        .state
+        .recent
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let content = vec![Spans::from(Span::raw(format!(
+                "{}: {}",
+                i,
+                last_n(m, chunks[2].width - 5)
+            )))];
+            ListItem::new(content)
+        })
+        .collect();
+    let recent = List::new(recent).block(Block::default().borders(Borders::ALL).title("Recent"));
+    f.render_widget(recent, chunks[2]);
 
-    let messages: Vec<ListItem> = player
+    let playlist: Vec<ListItem> = player
         .state
         .queue
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
+            let content = vec![Spans::from(Span::raw(format!(
+                "{}: {}",
+                i,
+                last_n(m, chunks[3].width - 5)
+            )))];
             ListItem::new(content)
         })
         .collect();
-    let messages =
-        List::new(messages).block(Block::default().borders(Borders::ALL).title("Playlist"));
-    f.render_widget(messages, chunks[3]);
+    let playlist =
+        List::new(playlist).block(Block::default().borders(Borders::ALL).title("Playlist"));
+    f.render_widget(playlist, chunks[3]);
 }
 
 fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player) {
@@ -144,6 +170,7 @@ fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player)
     let text = format!("{uri} {position} / {duration}");
     let progress = Paragraph::new(text).block(
         Block::default()
+            .title("Playing")
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::White)),
     );

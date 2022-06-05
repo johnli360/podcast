@@ -216,12 +216,6 @@ impl Player {
         }
     }
 
-    // fn report_playlist(&self) {
-        // self.state.print_recent();
-        // println_raw!("Current: {:?}", self.current_uri);
-        // self.state.print_queue();
-    // }
-
     fn next(&mut self) -> bool {
         if let Some(next) = self.state.pop_queue() {
             self.pause();

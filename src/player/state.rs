@@ -1,4 +1,3 @@
-use crossterm::terminal;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
@@ -19,7 +18,7 @@ pub struct State {
     #[serde(default = "VecDeque::new")]
     pub queue: VecDeque<String>,
     #[serde(default = "new_recent")]
-    recent: VecDeque<String>,
+    pub recent: VecDeque<String>,
 }
 fn new_recent() -> VecDeque<String> {
     VecDeque::with_capacity(32)
@@ -79,37 +78,4 @@ impl State {
         self.uris.get(uri).map(|p| p.progress)
     }
 
-/*     pub fn print_recent(&self) { */
-        /* if let Err(err) = terminal::disable_raw_mode() { */
-            /* eprintln!("{err}"); */
-        /* }; */
-
-        /* println!("----------- RECENT ------------ "); */
-        /* self.recent */
-            /* .iter() */
-            /* .enumerate() */
-            /* .for_each(|(i, uri)| println!("{i}: {uri}")); */
-        /* println!("------------------------------- "); */
-
-        /* if let Err(err) = terminal::enable_raw_mode() { */
-            /* eprintln!("{err}"); */
-        /* }; */
-    /* } */
-
-    /* pub fn print_queue(&self) { */
-        /* if let Err(err) = terminal::disable_raw_mode() { */
-            /* eprintln!("{err}"); */
-        /* }; */
-
-        /* println!("----------- QUEUE ------------- "); */
-        /* self.queue */
-            /* .iter() */
-            /* .enumerate() */
-            /* .for_each(|(i, uri)| println!("{i}: {uri}")); */
-        /* println!("------------------------------- "); */
-
-        /* if let Err(err) = terminal::enable_raw_mode() { */
-            /* eprintln!("{err}"); */
-        /* }; */
-    /* } */
 }
