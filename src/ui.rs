@@ -3,7 +3,7 @@ use std::{collections::VecDeque, io::Stdout};
 use gstreamer::State;
 use tui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Corner, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
@@ -57,7 +57,7 @@ pub fn draw_ui(
     let _ = terminal.draw(|f| {
         let chunks = Layout::default()
             .margin(0)
-            .constraints([  Constraint::Length(2), Constraint::Min(1)].as_ref())
+            .constraints([Constraint::Length(2), Constraint::Min(1)].as_ref())
             .split(f.size());
         let titles = TAB_TITLES
             .iter()
@@ -104,7 +104,6 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
         )
         .split(f.size());
 
-
     let recent: Vec<ListItem> = player
         .state
         .recent
@@ -120,8 +119,9 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
             ListItem::new(content)
         })
         .collect();
-    let recent = List::new(recent).block(Block::default().borders(Borders::ALL).title("Recent"));
-    // println!("rlen: {}", player.state.recent.len());
+    let recent = List::new(recent)
+        .block(Block::default().borders(Borders::ALL).title("Recent"))
+        .start_corner(Corner::BottomLeft);
     f.render_widget(recent, chunks[1]);
 
     draw_current_info(f, chunks[2], player);

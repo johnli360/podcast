@@ -69,14 +69,14 @@ impl State {
     }
 
     pub fn pop_recent(&mut self) -> Option<String> {
-        self.recent.pop_back()
+        self.recent.pop_front()
     }
 
     pub fn push_recent(&mut self, uri: &str) {
         if self.recent.len() == self.recent.capacity() {
-            self.recent.pop_front();
+            self.recent.pop_back();
         }
-        self.recent.push_back(uri.to_string());
+        self.recent.push_front(uri.to_string());
     }
 
     pub fn get_pos(&self, uri: &str) -> Option<u64> {
