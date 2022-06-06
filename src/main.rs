@@ -103,18 +103,37 @@ async fn listen(queue: Sender<Cmd>, ui_tx: Sender<UiUpdate>, addr: &str) {
 fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let mut done = false;
+        let mut editing = false;
         while let Ok(c) = read() {
-            if let Event::Key(KeyEvent { code, modifiers }) = c {
+            if let Event::Key(event @ KeyEvent { code, modifiers }) = c {
                 use KeyCode::Char;
+                if editing {
+                    if let Err(err) = ui_tx.blocking_send(UiUpdate::KeyEvent(event)) {
+                        eprintln_raw!("key error: {err}");
+                    }
+                    match code {
+                        KeyCode::Enter | KeyCode::Esc => {
+                            editing = false;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 let res = match code {
                     Char('q') => {
                         done = true;
                         Some(tx3.blocking_send(Cmd::Quit))
                     }
                     Char(' ') => Some(tx3.blocking_send(Cmd::PlayPause)),
-                    Char('o') => get_file()
-                        .map(|p| Cmd::Queue(p))
-                        .map(|c| tx3.blocking_send(c)),
+                    Char('o') => {
+                        if let Err(err) = ui_tx.blocking_send(UiUpdate::BrowseFile) {
+                            eprintln_raw!("key error: {err}");
+                        } else {
+                            editing = true;
+                        };
+                        None
+                    }
                     Char('h') | Char('H') | KeyCode::Left => {
                         let cmd = if modifiers.intersects(KeyModifiers::SHIFT) {
                             Cmd::Prev

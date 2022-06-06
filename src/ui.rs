@@ -1,6 +1,8 @@
 use std::{collections::VecDeque, io::Stdout};
 
+use crossterm::event::{KeyCode, KeyEvent};
 use gstreamer::State;
+use tokio::sync::mpsc::Sender;
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Corner, Direction, Layout, Rect},
@@ -10,21 +12,25 @@ use tui::{
     Frame, Terminal,
 };
 
-use crate::player::Player;
+use crate::player::{Cmd, Player};
 const TAB_TITLES: &[&str] = &["Player", "Log"];
 
 pub struct UiState {
     pub tab_index: usize,
     log: VecDeque<String>,
+    file_prompt: Option<String>,
+    tx: Sender<Cmd>,
 }
 impl UiState {
-    pub fn new() -> UiState {
+    pub fn new(tx: Sender<Cmd>) -> UiState {
         Self {
             tab_index: 0,
             log: VecDeque::new(),
+            file_prompt: None,
+            tx,
         }
     }
-    pub fn update(&mut self, event: UiUpdate) {
+    pub async fn update(&mut self, event: UiUpdate) {
         match event {
             UiUpdate::Tab => {
                 let new_index = (self.tab_index + 1) % TAB_TITLES.len();
@@ -33,6 +39,36 @@ impl UiState {
             UiUpdate::Log(msg) => {
                 self.log_event(msg);
             }
+            UiUpdate::BrowseFile => {
+                if self.file_prompt.is_none() {
+                    self.file_prompt = Some(String::new());
+                } else {
+                    self.file_prompt = None;
+                }
+            }
+            UiUpdate::KeyEvent(KeyEvent { code, .. }) => match code {
+                KeyCode::Char(c) => {
+                    if let Some(ref mut s) = self.file_prompt {
+                        s.push(c);
+                    }
+                }
+                KeyCode::Esc => {
+                    self.file_prompt = None;
+                }
+                KeyCode::Enter => {
+                    if let Some(s) = self.file_prompt.take() {
+                        if let Err(err) = self.tx.send(Cmd::Queue(s)).await {
+                            self.log_event(format!("{err}"));
+                        }
+                    }
+                }
+                KeyCode::Backspace => {
+                    if let Some(ref mut s) = self.file_prompt {
+                        s.pop();
+                    }
+                }
+                _ => {}
+            },
         }
     }
 
@@ -47,6 +83,8 @@ impl UiState {
 pub enum UiUpdate {
     Tab,
     Log(String),
+    BrowseFile,
+    KeyEvent(KeyEvent),
 }
 
 pub fn draw_ui(
@@ -87,7 +125,7 @@ fn last_n(s: &str, n: impl Into<usize>) -> &str {
     }
 }
 
-fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &UiState) {
+fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -125,6 +163,27 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
     f.render_widget(recent, chunks[1]);
 
     draw_current_info(f, chunks[2], player);
+
+    if let Some(_prompt) = &ui_state.file_prompt {
+        draw_file_prompt(f, chunks[3], ui_state);
+    } else {
+        draw_playlist(f, chunks[3], player);
+    }
+}
+
+fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState) {
+    let prompt_text: &str = &ui_state
+        .file_prompt
+        .as_ref()
+        .map(|s| s.as_str())
+        .unwrap_or("");
+    let input = Paragraph::new(prompt_text)
+        .style(Style::default())
+        .block(Block::default().borders(Borders::ALL).title("Input"));
+    f.render_widget(input, chunk);
+}
+
+fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player) {
     let playlist: Vec<ListItem> = player
         .state
         .queue
@@ -134,14 +193,14 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, _ui_state: &Ui
             let content = vec![Spans::from(Span::raw(format!(
                 "{}: {}",
                 i,
-                last_n(m, chunks[3].width.checked_sub(5).unwrap_or(0))
+                last_n(m, chunk.width.checked_sub(5).unwrap_or(0))
             )))];
             ListItem::new(content)
         })
         .collect();
     let playlist =
         List::new(playlist).block(Block::default().borders(Borders::ALL).title("Playlist"));
-    f.render_widget(playlist, chunks[3]);
+    f.render_widget(playlist, chunk);
 }
 
 fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player) {

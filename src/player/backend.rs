@@ -13,8 +13,9 @@ use super::{state::State, Cmd};
 
 pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+    let ui_cmd_tx = tx.clone();
     tokio::spawn(async move {
-        let mut ui_state = UiState::new();
+        let mut ui_state = UiState::new(ui_cmd_tx);
         let mut player = Player::new();
         let bus = player.playbin.bus().unwrap();
         let mut bus_stream = bus.stream();
@@ -27,7 +28,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
         loop {
             select! {
             Some(ui_update) = ui_rx.recv() => {
-                ui_state.update(ui_update);
+                ui_state.update(ui_update).await;
                 draw_ui(&mut terminal, &mut player, &ui_state);
             }
             Some(cmd) = rx.recv() => {
