@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, io::Stdout};
+use std::{collections::VecDeque, io::Stdout, path::PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent};
 use gstreamer::State;
@@ -12,13 +12,16 @@ use tui::{
     Frame, Terminal,
 };
 
-use crate::player::{Cmd, Player};
+use crate::{
+    dir::children,
+    player::{Cmd, Player},
+};
 const TAB_TITLES: &[&str] = &["Player", "Log"];
 
 pub struct UiState {
     pub tab_index: usize,
     log: VecDeque<String>,
-    file_prompt: Option<String>,
+    file_prompt: Option<(String, bool, Option<usize>, Vec<String>)>,
     tx: Sender<Cmd>,
 }
 impl UiState {
@@ -41,30 +44,52 @@ impl UiState {
             }
             UiUpdate::BrowseFile => {
                 if self.file_prompt.is_none() {
-                    self.file_prompt = Some(String::new());
+                    self.file_prompt = Some((String::from("/home/jl"), true, None, Vec::new()));
                 } else {
                     self.file_prompt = None;
                 }
             }
             UiUpdate::KeyEvent(KeyEvent { code, .. }) => match code {
                 KeyCode::Char(c) => {
-                    if let Some(ref mut s) = self.file_prompt {
+                    if let Some((ref mut s, ref mut dirty, ref mut index, ref mut cmp)) =
+                        self.file_prompt
+                    {
+                        if let Some(i) = index {
+                            if let Some(cmp_alt) = cmp.get_mut(*i) {
+                                std::mem::swap(s, cmp_alt);
+                            }
+                            *index = None;
+                        }
                         s.push(c);
+                        *dirty = true;
                     }
                 }
                 KeyCode::Esc => {
                     self.file_prompt = None;
                 }
                 KeyCode::Enter => {
-                    if let Some(s) = self.file_prompt.take() {
+                    if let Some((s, _, _, _)) = self.file_prompt.take() {
                         if let Err(err) = self.tx.send(Cmd::Queue(s)).await {
                             self.log_event(format!("{err}"));
                         }
                     }
                 }
                 KeyCode::Backspace => {
-                    if let Some(ref mut s) = self.file_prompt {
+                    if let Some((ref mut s, ref mut dirty, _, _)) = self.file_prompt {
                         s.pop();
+                        *dirty = true;
+                    }
+                }
+                KeyCode::Tab => {
+                    if let Some((_, _, ref mut index, cmpl)) = &mut self.file_prompt {
+                        if let Some(ref mut index_inner) = index {
+                            *index_inner += 1;
+                            if *index_inner >= cmpl.len() {
+                                *index = None;
+                            }
+                        } else {
+                            *index = Some(0);
+                        }
                     }
                 }
                 _ => {}
@@ -90,7 +115,7 @@ pub enum UiUpdate {
 pub fn draw_ui(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     player: &mut Player,
-    ui_state: &UiState,
+    ui_state: &mut UiState,
 ) {
     let _ = terminal.draw(|f| {
         let chunks = Layout::default()
@@ -125,7 +150,7 @@ fn last_n(s: &str, n: impl Into<usize>) -> &str {
     }
 }
 
-fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &UiState) {
+fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -171,16 +196,39 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &UiS
     }
 }
 
-fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState) {
-    let prompt_text: &str = &ui_state
-        .file_prompt
-        .as_ref()
-        .map(|s| s.as_str())
-        .unwrap_or("");
-    let input = Paragraph::new(prompt_text)
-        .style(Style::default())
-        .block(Block::default().borders(Borders::ALL).title("Input"));
-    f.render_widget(input, chunk);
+fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut UiState) {
+    if let Some((current_input, dirty, cmpl_ind, ref mut cmpl)) = ui_state.file_prompt.as_mut() {
+        let chunks = Layout::default()
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(chunk);
+
+        let prompt = if let Some(index) = cmpl_ind {
+            (*cmpl).get(*index).unwrap_or(&current_input)
+        } else {
+            &current_input
+        };
+        let input = Paragraph::new(&prompt[..])
+            .style(Style::default())
+            .block(Block::default().borders(Borders::ALL).title("Input"));
+        f.render_widget(input, chunks[0]);
+
+        let path = PathBuf::from(&current_input);
+
+        if *dirty {
+            *dirty = false;
+            *cmpl = children(path);
+        }
+
+        let cmpl: Vec<ListItem> = cmpl
+            .iter()
+            .map(|m| {
+                let content = vec![Spans::from(Span::raw(format!("{m}")))];
+                ListItem::new(content)
+            })
+            .collect();
+        let cmpl = List::new(cmpl).block(Block::default().borders(Borders::ALL)); //.title("Log"));
+        f.render_widget(cmpl, chunks[1]);
+    }
 }
 
 fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player) {

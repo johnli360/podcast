@@ -29,7 +29,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
             select! {
             Some(ui_update) = ui_rx.recv() => {
                 ui_state.update(ui_update).await;
-                draw_ui(&mut terminal, &mut player, &ui_state);
+                draw_ui(&mut terminal, &mut player, &mut ui_state);
             }
             Some(cmd) = rx.recv() => {
                 ui_state.log_event(format!("new cmd: {cmd:?}"));
@@ -46,7 +46,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
                 if player.duration.is_none() {
                     player.duration = player.playbin.query_duration();
                 }
-                draw_ui(&mut terminal, &mut player, &ui_state);
+                draw_ui(&mut terminal, &mut player, &mut ui_state);
             }
             }
         }
