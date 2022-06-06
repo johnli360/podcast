@@ -74,9 +74,11 @@ fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
             return false;
         }
         Cmd::Next => {
+            player.update_state();
             player.next();
         }
         Cmd::Prev => {
+            player.update_state();
             player.prev();
         }
     }
@@ -104,6 +106,10 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
         }
         MessageView::Eos(..) => {
             ui.log_event("End-Of-Stream reached.".into());
+            if let Some(uri) = &player.current_uri {
+                ui.log_event(format!("finished {uri}"));
+                player.state.reset_pos(uri);
+            }
             if !player.next() {
                 player.set_null();
             }
@@ -221,7 +227,6 @@ impl Player {
 
     fn next(&mut self) -> bool {
         if let Some(next) = self.state.pop_queue() {
-            self.pause();
             self.set_null();
             if let Some(uri) = &self.current_uri {
                 self.state.push_recent(uri);
@@ -239,7 +244,6 @@ impl Player {
 
     fn prev(&mut self) -> bool {
         if let Some(next) = self.state.pop_recent() {
-            self.pause();
             self.set_null();
             if let Some(uri) = &self.current_uri {
                 self.state.queue_front(uri);
@@ -247,6 +251,7 @@ impl Player {
             self.duration = gst::ClockTime::NONE;
             self.set_uri(&next);
             if self.playing {
+                self.playing = false;
                 self.play();
             }
             return true;
@@ -275,7 +280,6 @@ impl Player {
             self.playbin
                 .set_state(gst::State::Paused)
                 .expect("Unable to set the pipeline to the `Paused` state");
-            self.update_state();
         }
     }
 

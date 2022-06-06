@@ -52,6 +52,10 @@ impl State {
         self.uris.insert(uri, Playable { progress });
     }
 
+    pub fn reset_pos(&mut self, uri: &str) {
+        self.uris.remove(uri);
+    }
+
     pub fn queue(&mut self, uri: &str) {
         self.queue.push_back(uri.to_string());
     }
