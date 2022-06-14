@@ -69,7 +69,14 @@ impl UiState {
                 }
                 KeyCode::Enter => {
                     if let Some((s, _, _, _)) = self.file_prompt.take() {
-                        if let Err(err) = self.tx.send(Cmd::Queue(s)).await {
+                        let uri = if s.contains("://") {
+                            s
+                        } else {
+                            let mut uri = String::from("file://");
+                            uri.push_str(&s);
+                            uri
+                        };
+                        if let Err(err) = self.tx.send(Cmd::Queue(uri)).await {
                             self.log_event(format!("{err}"));
                         }
                     }
