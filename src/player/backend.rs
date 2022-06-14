@@ -212,15 +212,12 @@ impl Player {
             if let Some(new) = self.state.pop_queue() {
                 self.set_uri(&new);
             } else {
-                println_raw!("nothing to play");
                 return;
             }
         }
 
-        let curi = self.current_uri.take().unwrap();
-        self.pending_seek = self.state.get_pos(&curi);
-        self.current_uri.replace(curi);
-
+        let curi = self.current_uri.as_ref().unwrap();
+        self.pending_seek = self.state.get_pos(curi);
         if let Err(err) = self.playbin.set_state(gst::State::Playing) {
             eprintln_raw!("Unable to set the playbin to the `Playing` state: {err}");
         }
@@ -281,6 +278,7 @@ impl Player {
             self.playbin
                 .set_state(gst::State::Paused)
                 .expect("Unable to set the pipeline to the `Paused` state");
+            self.update_state();
         }
     }
 
