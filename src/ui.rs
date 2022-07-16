@@ -184,7 +184,7 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut
             let content = vec![Spans::from(Span::raw(format!(
                 "{}: {}",
                 i,
-                last_n(m, chunks[1].width.checked_sub(5).unwrap_or(0))
+                last_n(m, chunks[1].width.saturating_sub(5))
             )))];
             ListItem::new(content)
         })
@@ -210,7 +210,7 @@ fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut Ui
             .split(chunk);
 
         let prompt = if let Some(index) = cmpl_ind {
-            (*cmpl).get(*index).unwrap_or(&current_input)
+            (*cmpl).get(*index).unwrap_or(current_input)
         } else {
             &current_input
         };
@@ -229,7 +229,7 @@ fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut Ui
         let cmpl: Vec<ListItem> = cmpl
             .iter()
             .map(|m| {
-                let content = vec![Spans::from(Span::raw(format!("{m}")))];
+                let content = vec![Spans::from(Span::raw(m))];
                 ListItem::new(content)
             })
             .collect();
@@ -248,7 +248,7 @@ fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player) {
             let content = vec![Spans::from(Span::raw(format!(
                 "{}: {}",
                 i,
-                last_n(m, chunk.width.checked_sub(5).unwrap_or(0))
+                last_n(m, chunk.width.saturating_sub(5))
             )))];
             ListItem::new(content)
         })

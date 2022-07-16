@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fs::File, io::Write, time::Duration};
 use tokio::{
     select,
     sync::mpsc::{Receiver, Sender},
@@ -149,7 +149,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
                                 player.seek(pos);
                             }
                         } else {
-                            ui.log_event(format!("Seeking is DISABLED for this stream."));
+                            ui.log_event("Seeking is DISABLED for this stream.".to_string());
                         }
                     } else {
                         eprintln_raw!("Seeking query failed.")
@@ -309,7 +309,7 @@ impl Player {
             };
             self.seek(new);
         } else {
-            eprintln_raw!("failed seek_relative");
+            eprintln_raw!("failed seek_relative (query_position())");
         }
     }
 

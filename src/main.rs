@@ -12,8 +12,6 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use podaemon::dir::get_file;
-
 use std::io::stdout;
 
 #[tokio::main]

@@ -1,5 +1,3 @@
-use std::ffi::OsStr;
-use std::fs::{DirEntry, ReadDir};
 use std::io::{self, BufRead};
 use std::{fs, path::PathBuf};
 
@@ -55,13 +53,12 @@ pub fn children(path: PathBuf) -> Vec<String> {
         return Vec::new();
     };
 
-    if let Some(it) = fs::read_dir(dir_path).ok() {
-        return it
-            .filter_map(Result::ok)
+    if let Ok(it) = fs::read_dir(dir_path) {
+        it.filter_map(Result::ok)
             .map(|e| e.path())
             .filter(pred)
             .map(|p| p.to_string_lossy().to_string())
-            .collect();
+            .collect()
     } else {
         Vec::new()
     }
@@ -74,7 +71,7 @@ pub fn get_file() -> Option<String> {
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
     stdin.read_line(&mut s).ok()?;
-    while s.ends_with("\n") {
+    while s.ends_with('\n') {
         s.pop();
     }
     println!("line: {s}");
