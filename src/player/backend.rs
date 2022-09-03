@@ -14,7 +14,7 @@ use super::{
     Cmd,
 };
 
-pub async fn new(mut ui_rx: Receiver<UiUpdate>,) -> Sender<Cmd> {
+pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
     let ui_cmd_tx = tx.clone();
     tokio::spawn(async move {
@@ -29,8 +29,8 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>,) -> Sender<Cmd> {
         let mut terminal = Terminal::new(backend).expect("hmm2");
 
         // player.state.rss_feeds.push(RssFeed {
-            // uri: "https://feeds.fireside.fm/coder/rss".to_string(),
-            // channel: None,
+        // uri: "https://feeds.fireside.fm/coder/rss".to_string(),
+        // channel: None,
         // });
         player.state.update_feeds().await;
 
@@ -64,7 +64,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>,) -> Sender<Cmd> {
                 draw_ui(&mut terminal, &mut player, &mut ui_state);
             }
             Some(cmd) = rx.recv() => {
-                ui_state.log_event(format!("new cmd: {cmd:?}"));
+                // ui_state.log_event(format!("new cmd: {cmd:?}"));
                 if !run_cmd(cmd, &mut player)  {
                         return
                 }
@@ -116,7 +116,7 @@ fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
         }
         Cmd::DeleteQueue(index) => {
             player.state.queue.remove(index);
-        },
+        }
         Cmd::DeleteRecent(index) => {
             player.state.recent.remove(index);
         }
@@ -165,6 +165,9 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
             {
                 let new_state = state_changed.current();
                 let old_state = state_changed.old();
+                if new_state == gst::State::Paused {
+                    player.update_state();
+                };
 
                 ui.log_event(format!(
                     "Pipeline state: {:?} -> {:?}",
@@ -180,7 +183,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
                         let (seekable, start, end) = seeking.result();
                         player.seek_enabled = seekable;
                         if seekable {
-                            ui.log_event(format!("Seeking is ENABLED from {} to {}", start, end));
+                            // ui.log_event(format!("Seeking is ENABLED from {} to {}", start, end));
                             if let Some(pos) = player.pending_seek.take() {
                                 // println_raw!("seeking to pending: {pos}");
                                 ui.log_event(format!("seeking to pending: {pos}"));
