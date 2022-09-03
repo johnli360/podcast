@@ -330,8 +330,8 @@ fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player)
     f.render_widget(progress, chunk);
 }
 
-fn state_to_str(state: State) -> String {
-    match state {
+const fn state_to_str(state: State) -> &'static str {
+    return match state {
         State::VoidPending => "Void",
         State::Null => "Null",
         State::Ready => "Ready",
@@ -339,7 +339,6 @@ fn state_to_str(state: State) -> String {
         State::Playing => "Playing",
         _ => "Unknown",
     }
-    .to_string()
 }
 
 fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &UiState) {
