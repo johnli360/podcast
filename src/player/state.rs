@@ -1,3 +1,5 @@
+use futures::future::join_all;
+use rss::Channel;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
@@ -12,8 +14,29 @@ struct Playable {
     progress: u64,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RssFeed {
+    pub uri: String,
+    #[serde(skip)]
+    pub channel: Option<Channel>,
+}
+impl RssFeed {
+    async fn load(&mut self) {
+        if let Ok(content) = reqwest::get(&self.uri).await {
+            if let Ok(content) = content.bytes().await {
+                if let Ok(channel) = Channel::read_from(&content[..]) {
+                    self.channel.replace(channel);
+                }
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct State {
+    #[serde(default = "Vec::new")]
+    pub rss_feeds: Vec<RssFeed>,
+
     uris: HashMap<String, Playable>,
     #[serde(default = "VecDeque::new")]
     pub queue: VecDeque<String>,
@@ -32,6 +55,7 @@ impl State {
             serde_json::from_reader(reader)?
         } else {
             State {
+                rss_feeds: Vec::new(),
                 recent: new_recent(),
                 queue: VecDeque::new(),
                 uris: HashMap::new(),
@@ -46,6 +70,14 @@ impl State {
         let writer = BufWriter::new(file);
         serde_json::to_writer_pretty(writer, &self)?;
         Ok(())
+    }
+
+    pub async fn update_feeds(&mut self) {
+        let mut futs = Vec::with_capacity(self.rss_feeds.len());
+        for feed in &mut self.rss_feeds {
+            futs.push(feed.load());
+        }
+        join_all(futs).await;
     }
 
     pub fn insert_playable(&mut self, uri: String, progress: u64) {

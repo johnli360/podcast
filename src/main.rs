@@ -26,9 +26,9 @@ async fn main() -> Result<(), std::io::Error> {
     let ui_tx2 = ui_tx.clone();
     let ui_tx3 = ui_tx.clone();
 
-    tokio::spawn(async {
-        listen(tx, ui_tx, "192.168.0.108:51234").await;
-    });
+    // tokio::spawn(async {
+        // listen(tx, ui_tx, "192.168.0.109:51234").await;
+    // });
     tokio::spawn(async {
         listen(tx2, ui_tx2, "127.0.0.1:51234").await;
     });
