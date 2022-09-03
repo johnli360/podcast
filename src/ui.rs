@@ -20,6 +20,7 @@ const TAB_TITLES: &[&str] = &["Player", "Log"];
 
 pub struct UiState {
     pub tab_index: usize,
+    cursor_position: usize,
     log: VecDeque<String>,
     file_prompt: Option<(String, bool, Option<usize>, Vec<String>)>,
     tx: Sender<Cmd>,
@@ -28,6 +29,7 @@ impl UiState {
     pub fn new(tx: Sender<Cmd>) -> UiState {
         Self {
             tab_index: 0,
+            cursor_position: 0,
             log: VecDeque::new(),
             file_prompt: None,
             tx,
@@ -50,6 +52,22 @@ impl UiState {
                 }
             }
             UiUpdate::KeyEvent(KeyEvent { code, .. }) => match code {
+                KeyCode::Char('d') => {
+                    let cmd = if self.cursor_position < RECENT_SIZE {
+                        Cmd::DeleteRecent(self.cursor_position)
+                    } else {
+                        Cmd::DeleteQueue(self.cursor_position - RECENT_SIZE)
+                    };
+                    self.tx.send(cmd).await.expect("Failed to send delete");
+                }
+
+                KeyCode::Down | KeyCode::Char('j') => {
+                    //TODO: don't increment out of bounds of playlist
+                    self.cursor_position = self.cursor_position.saturating_add(1);
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.cursor_position = self.cursor_position.saturating_sub(1);
+                }
                 KeyCode::Char(c) => {
                     if let Some((ref mut s, ref mut dirty, ref mut index, ref mut cmp)) =
                         self.file_prompt
@@ -174,33 +192,45 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut
         )
         .split(f.size());
 
-    let recent: Vec<ListItem> = player
-        .state
-        .recent
-        .iter()
-        .take(3)
-        .enumerate()
-        .map(|(i, m)| {
-            let content = vec![Spans::from(Span::raw(format!(
-                "{}: {}",
-                i,
-                last_n(m, chunks[1].width.saturating_sub(5))
-            )))];
-            ListItem::new(content)
-        })
-        .collect();
-    let recent = List::new(recent)
-        .block(Block::default().borders(Borders::ALL).title("Recent"))
-        .start_corner(Corner::BottomLeft);
-    f.render_widget(recent, chunks[1]);
+    draw_recents(f, chunks[1], ui_state, player);
 
     draw_current_info(f, chunks[2], player);
 
     if let Some(_prompt) = &ui_state.file_prompt {
         draw_file_prompt(f, chunks[3], ui_state);
     } else {
-        draw_playlist(f, chunks[3], player);
+        draw_playlist(f, chunks[3], ui_state, player);
     }
+}
+
+const RECENT_SIZE: usize = 3;
+fn draw_recents<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, player: &Player) {
+    let recent: Vec<ListItem> = player
+        .state
+        .recent
+        .iter()
+        .take(RECENT_SIZE)
+        .enumerate()
+        .map(|(i, m)| {
+            let content = vec![Spans::from(Span::raw(format!(
+                "{}: {}",
+                i,
+                last_n(m, chunk.width.saturating_sub(5))
+            )))];
+            let item = ListItem::new(content);
+            if ui_state.cursor_position == RECENT_SIZE - i - 1 {
+                item.style(Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White))
+            } else {
+                item
+            }
+        })
+        .collect();
+    let recent = List::new(recent)
+        .block(Block::default().borders(Borders::ALL).title("Recent"))
+        .start_corner(Corner::BottomLeft);
+    f.render_widget(recent, chunk);
 }
 
 fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut UiState) {
@@ -238,7 +268,7 @@ fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut Ui
     }
 }
 
-fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player) {
+fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, player: &Player) {
     let playlist: Vec<ListItem> = player
         .state
         .queue
@@ -250,7 +280,16 @@ fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player) {
                 i,
                 last_n(m, chunk.width.saturating_sub(5))
             )))];
-            ListItem::new(content)
+            let item = ListItem::new(content);
+            if ui_state.cursor_position >= RECENT_SIZE
+                && i == ui_state.cursor_position - RECENT_SIZE
+            {
+                item.style(Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White))
+            } else {
+                item
+            }
         })
         .collect();
     let playlist =

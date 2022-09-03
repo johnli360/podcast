@@ -148,6 +148,12 @@ fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::J
                         };
                         Some(tx3.blocking_send(cmd))
                     }
+                    Char('d') | Char('D') | Char('j') | Char('k') | KeyCode::Up | KeyCode::Down => {
+                        if let Err(err) = ui_tx.blocking_send(UiUpdate::KeyEvent(event)) {
+                            eprintln_raw!("key error: {err}");
+                        };
+                        None
+                    }
                     KeyCode::Tab => {
                         if let Err(err) = ui_tx.blocking_send(UiUpdate::Tab) {
                             eprintln_raw!("key error: {err}");

@@ -82,6 +82,12 @@ fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
             player.update_state();
             player.prev();
         }
+        Cmd::DeleteQueue(index) => {
+            player.state.queue.remove(index);
+        },
+        Cmd::DeleteRecent(index) => {
+            player.state.recent.remove(index);
+        }
     }
     true
 }
