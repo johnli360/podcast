@@ -16,7 +16,7 @@ use crate::{
     dir::children,
     player::{Cmd, Player},
 };
-const TAB_TITLES: &[&str] = &["Player", "Log"];
+const TAB_TITLES: &[&str] = &["Player", "Feeds", "Log"];
 
 pub struct UiState {
     pub tab_index: usize,
@@ -160,7 +160,8 @@ pub fn draw_ui(
 
         match ui_state.tab_index {
             0 => draw_player_tab(f, player, ui_state),
-            1 => draw_event_log_tab(f, ui_state),
+            1 => draw_feed_tab(f, player, ui_state),
+            2 => draw_event_log_tab(f, ui_state),
             _ => (),
         }
     });
@@ -201,6 +202,55 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut
     } else {
         draw_playlist(f, chunks[3], ui_state, player);
     }
+}
+
+fn draw_feed_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut UiState) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(0)
+        .constraints(
+            [
+                Constraint::Length(2),
+                Constraint::Length(3),
+                Constraint::Length(5),
+            ]
+            .as_ref(),
+        )
+        .split(f.size());
+    let input = Paragraph::new("...")
+            .style(Style::default())
+            .block(Block::default()
+                .borders(Borders::ALL).title("Search"));
+    f.render_widget(input, chunks[1]);
+
+    let feeds: Vec<ListItem> = player.state.rss_feeds
+        .iter()
+        .take(RECENT_SIZE)
+        .enumerate()
+        .map(|(i, m)| {
+            let text = if let Some(x) = &m.channel {
+                &x.title
+            } else {
+                &m.uri
+            };
+            let content = vec![Spans::from(Span::raw(format!(
+                "{}: {:?}",
+                i,
+                last_n(text, chunks[2].width.saturating_sub(5))
+            )))];
+            let item = ListItem::new(content);
+            if ui_state.cursor_position == RECENT_SIZE - i - 1 {
+                item.style(Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White))
+            } else {
+                item
+            }
+        })
+        .collect();
+    let feeds = List::new(feeds)
+        .block(Block::default().borders(Borders::ALL).title("Feeds"));
+    f.render_widget(feeds, chunks[2]);
 }
 
 const RECENT_SIZE: usize = 3;

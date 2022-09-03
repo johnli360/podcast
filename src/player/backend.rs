@@ -28,34 +28,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend).expect("hmm2");
 
-        // player.state.rss_feeds.push(RssFeed {
-        // uri: "https://feeds.fireside.fm/coder/rss".to_string(),
-        // channel: None,
-        // });
         player.state.update_feeds().await;
-
-        // let mut x = File::create("test").unwrap();
-        // let mut uris = Vec::new();
-        // std::mem::swap(&mut uris, &mut player.state.rss_feeds);
-        // for feed in uris {
-        for feed in player.state.rss_feeds.clone() {
-            if let RssFeed { uri, channel } = feed {
-                if let Some(channel) = channel {
-                    ui_state.log_event(format!("title: {}", channel.title()));
-
-                    for e in channel.items.iter().take(2) {
-                        // writeln!(x, "title: {:?}, content {:?}", e.title(), e.enclosure().map(|e| e.url)).unwrap();
-                        if let Some(e) = e.enclosure() {
-                            player.queue(&e.url);
-                        }
-                    }
-                }
-            }
-        }
-
-        // std::mem::swap(&mut player.state.rss_feeds, &mut uris);
-        // for uri in uris {
-        // }
 
         loop {
             select! {
