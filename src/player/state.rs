@@ -1,6 +1,8 @@
+use chrono::DateTime;
 use futures::future::join_all;
-use rss::Channel;
+use rss::{Channel, Item};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::fs::File;
@@ -78,6 +80,41 @@ impl State {
             futs.push(feed.load());
         }
         join_all(futs).await;
+    }
+
+    pub fn get_episodes(&self) -> Vec<&Item> {
+        // let mut futs = Vec::with_capacity(self.rss_feeds.len());
+        let mut episodes: Vec<&Item> = self
+            .rss_feeds
+            .iter()
+            // .filter( |feed| feed.
+            .filter_map(|feed| {
+                if let Some(chan) = &feed.channel {
+                    Some(&chan.items)
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect();
+        episodes.sort_by(Self::cmp_date);
+        // futs.push(feed.load());
+        return episodes;
+    }
+
+    fn cmp_date(date1: &&Item, date2: &&Item) -> Ordering {
+        let dates = (date1.pub_date().map(DateTime::parse_from_rfc2822).map(Result::ok),
+            date2.pub_date().map(DateTime::parse_from_rfc2822).map(Result::ok));
+        return dates.0.cmp(&dates.1);
+        // if let (Some(date1), Some(date2)) =  dates {
+        // let date1 = chrono::DateTime::parse_from_rfc2822(date1);
+        // if let Some(date2) =  {
+        // chrono::DateTime::parse_from_rfc2822(date2);
+        // date1.c
+        // return date1.cmp(date2)
+        // } else if let (None, Some(date2)
+        // date1.com
+        // return Ordering::Less;
     }
 
     pub fn insert_playable(&mut self, uri: String, progress: u64) {
