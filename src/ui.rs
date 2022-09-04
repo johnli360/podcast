@@ -20,7 +20,7 @@ const TAB_TITLES: &[&str] = &["Player", "Episodes", "Feeds", "Log"];
 
 pub struct UiState {
     pub tab_index: usize,
-    cursor_position: usize,
+    cursor_position: [usize; TAB_TITLES.len()],
     log: VecDeque<String>,
     file_prompt: Option<(String, bool, Option<usize>, Vec<String>)>,
     tx: Sender<Cmd>,
@@ -29,13 +29,28 @@ impl UiState {
     pub fn new(tx: Sender<Cmd>) -> UiState {
         Self {
             tab_index: 0,
-            cursor_position: 0,
+            cursor_position: [0; TAB_TITLES.len()],
             log: VecDeque::new(),
             file_prompt: None,
             tx,
         }
     }
-    pub async fn update(&mut self, event: UiUpdate) {
+
+    pub fn get_cursor_pos(&self) -> usize {
+        self.cursor_position[self.tab_index]
+    }
+
+    fn get_cursor_bound(&self, player: &Player) -> usize {
+        match self.tab_index {
+            0 => player.state.recent.len() + player.state.queue.len() - 1,
+            // 1 => EPISODES (lots, no point in calculating max?).
+            2 => player.state.rss_feeds.len() - 1,
+            // 3 => LOG
+            _ => usize::MAX,
+        }
+    }
+
+    pub async fn update(&mut self, event: UiUpdate, player: &Player) {
         match event {
             UiUpdate::Tab => {
                 let new_index = (self.tab_index + 1) % TAB_TITLES.len();
@@ -52,21 +67,30 @@ impl UiState {
                 }
             }
             UiUpdate::KeyEvent(KeyEvent { code, .. }) => match code {
-                KeyCode::Char('d') => {
-                    let cmd = if self.cursor_position < RECENT_SIZE {
-                        Cmd::DeleteRecent(self.cursor_position)
-                    } else {
-                        Cmd::DeleteQueue(self.cursor_position - RECENT_SIZE)
-                    };
-                    self.tx.send(cmd).await.expect("Failed to send delete");
-                }
+                KeyCode::Char('d') => match self.tab_index {
+                    0 => {
+                        let cpos = self.get_cursor_pos();
+                        let recent_size = player.state.recent.len();
+                        let cmd = if cpos < recent_size {
+                            Cmd::DeleteRecent(recent_size - cpos - 1)
+                        } else {
+                            Cmd::DeleteQueue(cpos - recent_size)
+                        };
+                        self.tx.send(cmd).await.expect("Failed to send delete");
+                    }
+                    _ => (),
+                },
 
                 KeyCode::Down | KeyCode::Char('j') => {
-                    //TODO: don't increment out of bounds of playlist
-                    self.cursor_position = self.cursor_position.saturating_add(1);
+                    let pos = self.get_cursor_pos();
+                    let bound = self.get_cursor_bound(player);
+                    if pos < bound {
+                        self.cursor_position[self.tab_index] = pos.saturating_add(1);
+                    }
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
-                    self.cursor_position = self.cursor_position.saturating_sub(1);
+                    self.cursor_position[self.tab_index] =
+                        self.cursor_position[self.tab_index].saturating_sub(1);
                 }
                 KeyCode::Char(c) => {
                     if let Some((ref mut s, ref mut dirty, ref mut index, ref mut cmp)) =
@@ -184,10 +208,8 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut
         .constraints(
             [
                 Constraint::Length(2),
-                // Constraint::Length(3),
                 Constraint::Length(5),
                 Constraint::Length(3),
-                // Constraint::Min(1),
                 Constraint::Min(1),
             ]
             .as_ref(),
@@ -213,41 +235,38 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &m
             [
                 Constraint::Length(2),
                 Constraint::Length(3),
-                Constraint::Length(5),
+                Constraint::Min(5),
             ]
             .as_ref(),
         )
         .split(f.size());
-    let input = Paragraph::new("...")
-            .style(Style::default())
-            .block(Block::default()
-                .borders(Borders::ALL).title("Search"));
+    let input = Paragraph::new(format!("... {}", chunks[2].height))
+        .style(Style::default())
+        .block(Block::default().borders(Borders::ALL).title("Search"));
     f.render_widget(input, chunks[1]);
 
-    let episodes: Vec<ListItem> = player.state.get_episodes()
+    let half_height = (chunks[2].height - 2) / 2;
+    let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
+
+    let episodes: Vec<ListItem> = player
+        .state
+        // TODO: need to cache this, expensive to compute every time
+        .get_episodes()
         .iter()
-        // .take(RECENT_SIZE)
         .enumerate()
+        .skip(first)
+        .take(chunks[2].height.into())
         .map(|(i, m)| {
-            let content = format!("{i}:  {:?}",  m.title);
-            ListItem::new(content)
-/*             let content = vec![Spans::from(Span::raw(format!( */
-                /* "{}: {:?}", */
-                /* i, */
-                /* last_n(text, chunks[2].width.saturating_sub(5)) */
-            /* )))]; */
-            /* let item = ListItem::new(content); */
-            /* if ui_state.cursor_position == RECENT_SIZE - i - 1 { */
-                /* item.style(Style::default() */
-                    /* .fg(Color::Black) */
-                    /* .bg(Color::White)) */
-            /* } else { */
-                /* item */
-            /* } */
+            let content = format!("{i}:  {:?}", m.title);
+            let item = ListItem::new(content);
+            if ui_state.get_cursor_pos() == i {
+                item.style(Style::default().fg(Color::Black).bg(Color::White))
+            } else {
+                item
+            }
         })
         .collect();
-    let episodes = List::new(episodes)
-        .block(Block::default().borders(Borders::ALL).title("Feeds"));
+    let episodes = List::new(episodes).block(Block::default().borders(Borders::ALL).title("Feeds"));
     f.render_widget(episodes, chunks[2]);
 }
 
@@ -259,21 +278,26 @@ fn draw_feed_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut U
             [
                 Constraint::Length(2),
                 Constraint::Length(3),
-                Constraint::Length(5),
+                Constraint::Min(5),
             ]
             .as_ref(),
         )
         .split(f.size());
     let input = Paragraph::new("...")
-            .style(Style::default())
-            .block(Block::default()
-                .borders(Borders::ALL).title("Search"));
+        .style(Style::default())
+        .block(Block::default().borders(Borders::ALL).title("Search"));
     f.render_widget(input, chunks[1]);
 
-    let feeds: Vec<ListItem> = player.state.rss_feeds
+    let half_height = (chunks[2].height - 2) / 2;
+    let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
+
+    let feeds: Vec<ListItem> = player
+        .state
+        .rss_feeds
         .iter()
-        .take(RECENT_SIZE)
         .enumerate()
+        .skip(first)
+        .take(chunks[2].height as usize)
         .map(|(i, m)| {
             let text = if let Some(x) = &m.channel {
                 &x.title
@@ -286,28 +310,30 @@ fn draw_feed_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut U
                 last_n(text, chunks[2].width.saturating_sub(5))
             )))];
             let item = ListItem::new(content);
-            if ui_state.cursor_position == RECENT_SIZE - i - 1 {
-                item.style(Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::White))
+            if ui_state.get_cursor_pos() == i {
+                item.style(Style::default().fg(Color::Black).bg(Color::White))
             } else {
                 item
             }
         })
         .collect();
-    let feeds = List::new(feeds)
-        .block(Block::default().borders(Borders::ALL).title("Feeds"));
+    let feeds = List::new(feeds).block(Block::default().borders(Borders::ALL).title("Feeds"));
     f.render_widget(feeds, chunks[2]);
 }
 
 const RECENT_SIZE: usize = 3;
 fn draw_recents<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, player: &Player) {
+    let recent_len = player.state.recent.len();
+    let to_skip = recent_len
+        .saturating_sub(RECENT_SIZE)
+        .saturating_sub(ui_state.get_cursor_pos());
     let recent: Vec<ListItem> = player
         .state
         .recent
         .iter()
-        .take(RECENT_SIZE)
         .enumerate()
+        .skip(to_skip)
+        .take(RECENT_SIZE)
         .map(|(i, m)| {
             let content = vec![Spans::from(Span::raw(format!(
                 "{}: {}",
@@ -315,10 +341,8 @@ fn draw_recents<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, p
                 last_n(m, chunk.width.saturating_sub(5))
             )))];
             let item = ListItem::new(content);
-            if ui_state.cursor_position == RECENT_SIZE - i - 1 {
-                item.style(Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::White))
+            if ui_state.get_cursor_pos() == recent_len - 1 - i {
+                item.style(Style::default().fg(Color::Black).bg(Color::White))
             } else {
                 item
             }
@@ -360,17 +384,21 @@ fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut Ui
                 ListItem::new(content)
             })
             .collect();
-        let cmpl = List::new(cmpl).block(Block::default().borders(Borders::ALL)); //.title("Log"));
+        let cmpl = List::new(cmpl).block(Block::default().borders(Borders::ALL));
         f.render_widget(cmpl, chunks[1]);
     }
 }
 
 fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, player: &Player) {
+    //                - 2 for border
+    let half_height = (chunk.height - 2) / 2;
+    let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
     let playlist: Vec<ListItem> = player
         .state
         .queue
         .iter()
         .enumerate()
+        .skip(first)
         .map(|(i, m)| {
             let content = vec![Spans::from(Span::raw(format!(
                 "{}: {}",
@@ -378,12 +406,9 @@ fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, 
                 last_n(m, chunk.width.saturating_sub(5))
             )))];
             let item = ListItem::new(content);
-            if ui_state.cursor_position >= RECENT_SIZE
-                && i == ui_state.cursor_position - RECENT_SIZE
-            {
-                item.style(Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::White))
+            let r_len = player.state.recent.len();
+            if ui_state.get_cursor_pos() >= r_len && i == ui_state.get_cursor_pos() - r_len {
+                item.style(Style::default().fg(Color::Black).bg(Color::White))
             } else {
                 item
             }
@@ -428,7 +453,7 @@ fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player)
 }
 
 const fn state_to_str(state: State) -> &'static str {
-    return match state {
+    match state {
         State::VoidPending => "Void",
         State::Null => "Null",
         State::Ready => "Ready",

@@ -33,12 +33,12 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
         loop {
             select! {
             Some(ui_update) = ui_rx.recv() => {
-                ui_state.update(ui_update).await;
+                ui_state.update(ui_update, &player).await;
                 draw_ui(&mut terminal, &mut player, &mut ui_state);
             }
             Some(cmd) = rx.recv() => {
                 // ui_state.log_event(format!("new cmd: {cmd:?}"));
-                if !run_cmd(cmd, &mut player)  {
+                if !run_cmd(cmd, &mut player, &mut ui_state)  {
                         return
                 }
             }
@@ -60,7 +60,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
     tx
 }
 
-fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
+fn run_cmd(cmd: Cmd, player: &mut Player, ui: &mut UiState) -> bool {
     match cmd {
         Cmd::Play => player.play(),
         Cmd::Pause => player.pause(),
@@ -88,13 +88,23 @@ fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
             player.prev();
         }
         Cmd::DeleteQueue(index) => {
-            player.state.queue.remove(index);
+            let uri = player.state.queue.remove(index);
+            log_delete(ui, index, uri);
         }
         Cmd::DeleteRecent(index) => {
-            player.state.recent.remove(index);
+            let uri = player.state.recent.remove(index);
+            log_delete(ui, index, uri);
         }
     }
     true
+}
+
+fn log_delete(ui: &mut UiState, index: usize, uri: Option<String>) {
+    if let Some(uri) = uri {
+        ui.log_event(format!("Deleting {index}: {uri}"));
+    } else {
+        ui.log_event(format!("Deleting {index}: no such element"));
+    }
 }
 
 fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
