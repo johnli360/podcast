@@ -1,5 +1,6 @@
 use std::{collections::VecDeque, io::Stdout, path::PathBuf};
 
+use chrono::DateTime;
 use crossterm::event::{KeyCode, KeyEvent};
 use gstreamer::State;
 use tokio::sync::mpsc::Sender;
@@ -257,7 +258,16 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &m
         .skip(first)
         .take(chunks[2].height.into())
         .map(|(i, m)| {
-            let content = format!("{i}:  {:?}", m.title);
+            let asd = String::from("n/a");
+            let title = m.title.as_ref().unwrap_or(&asd);
+            let x = m
+                .pub_date()
+                .map(DateTime::parse_from_rfc2822)
+                .map(Result::ok)
+                .flatten()
+                .map(|dt| dt.date().naive_utc().to_string());
+
+            let content = format!("{i}: {} {title}", x.as_ref().unwrap_or(&asd));
             let item = ListItem::new(content);
             if ui_state.get_cursor_pos() == i {
                 item.style(Style::default().fg(Color::Black).bg(Color::White))
@@ -266,7 +276,7 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &m
             }
         })
         .collect();
-    let episodes = List::new(episodes).block(Block::default().borders(Borders::ALL).title("Feeds"));
+    let episodes = List::new(episodes).block(Block::default().borders(Borders::ALL).title("Episodes"));
     f.render_widget(episodes, chunks[2]);
 }
 
