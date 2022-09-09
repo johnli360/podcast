@@ -26,9 +26,9 @@ async fn main() -> Result<(), std::io::Error> {
     let ui_tx2 = ui_tx.clone();
     let ui_tx3 = ui_tx.clone();
 
-    // tokio::spawn(async {
-        // listen(tx, ui_tx, "192.168.0.109:51234").await;
-    // });
+    tokio::spawn(async {
+        listen(tx, ui_tx, "192.168.10.3:51234").await;
+    });
     tokio::spawn(async {
         listen(tx2, ui_tx2, "127.0.0.1:51234").await;
     });
@@ -105,6 +105,9 @@ fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::J
         while let Ok(c) = read() {
             if let Event::Key(event @ KeyEvent { code, modifiers }) = c {
                 use KeyCode::Char;
+                // ui_tx
+                // .blocking_send(UiUpdate::Log(format!("Key: {c:?}, editing: {editing}")))
+                // .unwrap();
                 if editing {
                     if let Err(err) = ui_tx.blocking_send(UiUpdate::KeyEvent(event)) {
                         eprintln_raw!("key error: {err}");
