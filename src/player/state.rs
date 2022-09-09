@@ -82,14 +82,15 @@ impl State {
         join_all(futs).await;
     }
 
-    pub fn get_episodes(&self) -> Vec<&Item> {
-        let mut episodes: Vec<&Item> = self
+    pub fn get_episodes(&self) -> Vec<(&String, &Item)> {
+        let mut episodes: Vec<(&String, &Item)> = self
             .rss_feeds
             .iter()
             .filter_map(|feed| {
                 if let Some(chan) = &feed.channel {
                     let bound = min(chan.items.len(), 50);
-                    Some(&chan.items[..bound])
+                    let zipped = chan.items.iter().map(|item| (&chan.title, item));
+                    Some(zipped.take(bound))
                 } else {
                     None
                 }
@@ -100,9 +101,9 @@ impl State {
         return episodes;
     }
 
-    fn cmp_date(date1: &&Item, date2: &&Item) -> Ordering {
-        let dates = (date1.pub_date().map(DateTime::parse_from_rfc2822).map(Result::ok),
-            date2.pub_date().map(DateTime::parse_from_rfc2822).map(Result::ok));
+    fn cmp_date(date1: &(&String, &Item), date2: &(&String, &Item)) -> Ordering {
+        let dates = (date1.1.pub_date().map(DateTime::parse_from_rfc2822).map(Result::ok),
+            date2.1.pub_date().map(DateTime::parse_from_rfc2822).map(Result::ok));
         return dates.1.cmp(&dates.0);
     }
 

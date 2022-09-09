@@ -257,7 +257,7 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &m
         .enumerate()
         .skip(first)
         .take(chunks[2].height.into())
-        .map(|(i, m)| {
+        .map(|(i, (chan_title,m))| {
             let asd = String::from("n/a");
             let title = m.title.as_ref().unwrap_or(&asd);
             let x = m
@@ -267,7 +267,7 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &m
                 .flatten()
                 .map(|dt| dt.date().naive_utc().to_string());
 
-            let content = format!("{i}: {} {title}", x.as_ref().unwrap_or(&asd));
+            let content = format!("{i}: {} {chan_title} {title}", x.as_ref().unwrap_or(&asd));
             let item = ListItem::new(content);
             if ui_state.get_cursor_pos() == i {
                 item.style(Style::default().fg(Color::Black).bg(Color::White))
