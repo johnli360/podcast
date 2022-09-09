@@ -15,7 +15,8 @@ pub enum Cmd {
     SeekRelative(i64),
     Quit,
     DeleteQueue(usize),
-    DeleteRecent(usize)
+    DeleteRecent(usize),
+    Subscribe(String),
 }
 
 pub fn parse_cmd(buf: &str) -> Option<Cmd> {

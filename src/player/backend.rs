@@ -38,7 +38,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
             }
             Some(cmd) = rx.recv() => {
                 // ui_state.log_event(format!("new cmd: {cmd:?}"));
-                if !run_cmd(cmd, &mut player, &mut ui_state)  {
+                if !run_cmd(cmd, &mut player, &mut ui_state).await {
                         return
                 }
             }
@@ -60,7 +60,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
     tx
 }
 
-fn run_cmd(cmd: Cmd, player: &mut Player, ui: &mut UiState) -> bool {
+async fn run_cmd(cmd: Cmd, player: &mut Player, ui: &mut UiState) -> bool {
     match cmd {
         Cmd::Play => player.play(),
         Cmd::Pause => player.pause(),
@@ -68,6 +68,15 @@ fn run_cmd(cmd: Cmd, player: &mut Player, ui: &mut UiState) -> bool {
         Cmd::Queue(uri) => player.queue(&uri),
         Cmd::Seek(pos) => player.seek(pos),
         Cmd::SeekRelative(delta) => player.seek_relative(delta),
+
+        Cmd::Subscribe(url) => {
+            let x = RssFeed {
+                uri: url,
+                channel: None,
+            };
+            player.state.rss_feeds.push(x);
+            player.state.update_feeds().await;
+        }
         Cmd::Shutdown | Cmd::Quit => {
             player.update_state();
             if let Some(uri) = &player.current_uri {

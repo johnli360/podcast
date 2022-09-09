@@ -61,89 +61,126 @@ impl UiState {
                 self.log_event(msg);
             }
             UiUpdate::BrowseFile => {
+                let init = if self.tab_index == 0 {
+                    String::from("/home/jl")
+                } else {
+                    String::new()
+                };
+
                 if self.file_prompt.is_none() {
-                    self.file_prompt = Some((String::from("/home/jl"), true, None, Vec::new()));
+                    self.file_prompt = Some((init, true, None, Vec::new()));
                 } else {
                     self.file_prompt = None;
                 }
             }
-            UiUpdate::KeyEvent(KeyEvent { code, .. }) => match code {
-                KeyCode::Char('d') => match self.tab_index {
-                    0 => {
-                        let cpos = self.get_cursor_pos();
-                        let recent_size = player.state.recent.len();
-                        let cmd = if cpos < recent_size {
-                            Cmd::DeleteRecent(recent_size - cpos - 1)
-                        } else {
-                            Cmd::DeleteQueue(cpos - recent_size)
-                        };
-                        self.tx.send(cmd).await.expect("Failed to send delete");
-                    }
-                    _ => (),
-                },
-
-                KeyCode::Down | KeyCode::Char('j') => {
-                    let pos = self.get_cursor_pos();
-                    let bound = self.get_cursor_bound(player);
-                    if pos < bound {
-                        self.cursor_position[self.tab_index] = pos.saturating_add(1);
-                    }
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    self.cursor_position[self.tab_index] =
-                        self.cursor_position[self.tab_index].saturating_sub(1);
-                }
-                KeyCode::Char(c) => {
-                    if let Some((ref mut s, ref mut dirty, ref mut index, ref mut cmp)) =
-                        self.file_prompt
-                    {
-                        if let Some(i) = index {
-                            if let Some(cmp_alt) = cmp.get_mut(*i) {
-                                std::mem::swap(s, cmp_alt);
-                            }
-                            *index = None;
-                        }
-                        s.push(c);
-                        *dirty = true;
-                    }
-                }
-                KeyCode::Esc => {
-                    self.file_prompt = None;
-                }
-                KeyCode::Enter => {
-                    if let Some((s, _, _, _)) = self.file_prompt.take() {
-                        let uri = if s.contains("://") {
-                            s
-                        } else {
-                            let mut uri = String::from("file://");
-                            uri.push_str(&s);
-                            uri
-                        };
-                        if let Err(err) = self.tx.send(Cmd::Queue(uri)).await {
-                            self.log_event(format!("{err}"));
-                        }
-                    }
-                }
-                KeyCode::Backspace => {
-                    if let Some((ref mut s, ref mut dirty, _, _)) = self.file_prompt {
-                        s.pop();
-                        *dirty = true;
-                    }
-                }
-                KeyCode::Tab => {
-                    if let Some((_, _, ref mut index, cmpl)) = &mut self.file_prompt {
-                        if let Some(ref mut index_inner) = index {
-                            *index_inner += 1;
-                            if *index_inner >= cmpl.len() {
+            UiUpdate::KeyEvent(KeyEvent { code, .. }) => {
+                if self.file_prompt.is_some() {
+                    if let KeyCode::Char(c) = code {
+                        if let Some((ref mut s, ref mut dirty, ref mut index, ref mut cmp)) =
+                            self.file_prompt
+                        {
+                            if let Some(i) = index {
+                                if let Some(cmp_alt) = cmp.get_mut(*i) {
+                                    std::mem::swap(s, cmp_alt);
+                                }
                                 *index = None;
                             }
-                        } else {
-                            *index = Some(0);
+                            s.push(c);
+                            *dirty = true;
                         }
+                        return;
                     }
                 }
-                _ => {}
-            },
+
+                match code {
+                    KeyCode::Char('d') => match self.tab_index {
+                        0 => {
+                            let cpos = self.get_cursor_pos();
+                            let recent_size = player.state.recent.len();
+                            let cmd = if cpos < recent_size {
+                                Cmd::DeleteRecent(recent_size - cpos - 1)
+                            } else {
+                                Cmd::DeleteQueue(cpos - recent_size)
+                            };
+                            self.tx.send(cmd).await.expect("Failed to send delete");
+                        }
+                        _ => (),
+                    },
+
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        let pos = self.get_cursor_pos();
+                        let bound = self.get_cursor_bound(player);
+                        if pos < bound {
+                            self.cursor_position[self.tab_index] = pos.saturating_add(1);
+                        }
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.cursor_position[self.tab_index] =
+                            self.cursor_position[self.tab_index].saturating_sub(1);
+                    }
+
+                    KeyCode::Esc => {
+                        self.file_prompt = None;
+                    }
+                    KeyCode::Enter => {
+                        if let Some((s, _, _, _)) = self.file_prompt.take() {
+                            if self.tab_index == 0 {
+                                let uri = if s.contains("://") {
+                                    s
+                                } else {
+                                    let mut uri = String::from("file://");
+                                    uri.push_str(&s);
+                                    uri
+                                };
+                                if let Err(err) = self.tx.send(Cmd::Queue(uri)).await {
+                                    self.log_event(format!("{err}"));
+                                }
+                            } else if self.tab_index == 2 {
+                                if let Err(err) = self.tx.send(Cmd::Subscribe(s)).await {
+                                    self.log_event(format!("Subscribe error: {err}"));
+                                }
+                            }
+                        } else if self.tab_index == 1 {
+                            let episodes = player.state.get_episodes();
+                            if let Some((_, episode)) = episodes.get(self.get_cursor_pos()) {
+                                self.log_event(format!("Queue : {episode:?}"));
+                                if let Some(url) = episode.enclosure() {
+                                    if let Err(err) =
+                                        self.tx.send(Cmd::Queue(url.url.clone())).await
+                                    {
+                                        self.log_event(format!("Queue error: {err}"));
+                                    }
+                                }
+                            } else {
+                                self.log_event(format!(
+                                    "failed queue: index: {}",
+                                    self.get_cursor_pos()
+                                ));
+                            }
+                        }
+                    }
+
+                    KeyCode::Backspace => {
+                        if let Some((ref mut s, ref mut dirty, _, _)) = self.file_prompt {
+                            s.pop();
+                            *dirty = true;
+                        }
+                    }
+                    KeyCode::Tab => {
+                        if let Some((_, _, ref mut index, cmpl)) = &mut self.file_prompt {
+                            if let Some(ref mut index_inner) = index {
+                                *index_inner += 1;
+                                if *index_inner >= cmpl.len() {
+                                    *index = None;
+                                }
+                            } else {
+                                *index = Some(0);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -155,6 +192,7 @@ impl UiState {
     }
 }
 
+#[derive(Debug)]
 pub enum UiUpdate {
     Tab,
     Log(String),
@@ -257,7 +295,7 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &m
         .enumerate()
         .skip(first)
         .take(chunks[2].height.into())
-        .map(|(i, (chan_title,m))| {
+        .map(|(i, (chan_title, m))| {
             let asd = String::from("n/a");
             let title = m.title.as_ref().unwrap_or(&asd);
             let x = m
@@ -276,7 +314,8 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &m
             }
         })
         .collect();
-    let episodes = List::new(episodes).block(Block::default().borders(Borders::ALL).title("Episodes"));
+    let episodes =
+        List::new(episodes).block(Block::default().borders(Borders::ALL).title("Episodes"));
     f.render_widget(episodes, chunks[2]);
 }
 
