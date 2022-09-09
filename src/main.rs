@@ -12,6 +12,7 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
+use std::env;
 use std::io::stdout;
 
 #[tokio::main]
@@ -26,12 +27,18 @@ async fn main() -> Result<(), std::io::Error> {
     let ui_tx2 = ui_tx.clone();
     let ui_tx3 = ui_tx.clone();
 
-    tokio::spawn(async {
-        listen(tx, ui_tx, "192.168.10.3:51234").await;
-    });
-    tokio::spawn(async {
-        listen(tx2, ui_tx2, "127.0.0.1:51234").await;
-    });
+    if let Ok(port) = env::var("PORT") {
+        {
+            let addr = format!("192.168.10.3:{}", &port);
+            tokio::spawn(async move {
+                listen(tx, ui_tx, &addr).await;
+            });
+        }
+        tokio::spawn(async move {
+            let addr = format!("127.0.0.1:{port}");
+            listen(tx2, ui_tx2, &addr).await;
+        });
+    }
     if let Err(err) = terminal::enable_raw_mode() {
         eprintln_raw!("{err}");
     };
