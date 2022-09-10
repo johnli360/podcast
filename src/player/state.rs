@@ -2,7 +2,7 @@ use chrono::DateTime;
 use futures::future::join_all;
 use rss::{Channel, Item};
 use serde::{Deserialize, Serialize};
-use std::cmp::{Ordering, min};
+use std::cmp::{min, Ordering};
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::fs::File;
@@ -23,7 +23,7 @@ pub struct RssFeed {
     pub channel: Option<Channel>,
 }
 impl RssFeed {
-    async fn load(&mut self) {
+    pub async fn load(&mut self) {
         if let Ok(content) = reqwest::get(&self.uri).await {
             if let Ok(content) = content.bytes().await {
                 if let Ok(channel) = Channel::read_from(&content[..]) {
@@ -102,8 +102,18 @@ impl State {
     }
 
     fn cmp_date(date1: &(&String, &Item), date2: &(&String, &Item)) -> Ordering {
-        let dates = (date1.1.pub_date().map(DateTime::parse_from_rfc2822).map(Result::ok),
-            date2.1.pub_date().map(DateTime::parse_from_rfc2822).map(Result::ok));
+        let dates = (
+            date1
+                .1
+                .pub_date()
+                .map(DateTime::parse_from_rfc2822)
+                .map(Result::ok),
+            date2
+                .1
+                .pub_date()
+                .map(DateTime::parse_from_rfc2822)
+                .map(Result::ok),
+        );
         return dates.1.cmp(&dates.0);
     }
 
