@@ -17,6 +17,7 @@ use std::io::stdout;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
+    console_subscriber::init();
     gstreamer::init().unwrap();
     execute!(stdout(), EnterAlternateScreen)?;
 
@@ -110,7 +111,7 @@ fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::J
         let mut done = false;
         let mut editing = false;
         while let Ok(c) = read() {
-            if let Event::Key(event @ KeyEvent { code, modifiers }) = c {
+            if let Event::Key(event @ KeyEvent { code, modifiers, kind: _, state: _ }) = c {
                 use KeyCode::Char;
                 // ui_tx
                 // .blocking_send(UiUpdate::Log(format!("Key: {c:?}, editing: {editing}")))
