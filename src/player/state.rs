@@ -7,6 +7,9 @@ use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::time;
 
 const FILE: &str = "state";
 
@@ -36,14 +39,18 @@ impl RssFeed {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct State {
-    #[serde(default = "Vec::new")]
-    pub rss_feeds: Vec<RssFeed>,
+    #[serde(default = "new_rss_feeds")]
+    pub rss_feeds: Arc<Mutex<Vec<RssFeed>>>,
 
     uris: HashMap<String, Playable>,
     #[serde(default = "VecDeque::new")]
     pub queue: VecDeque<String>,
     #[serde(default = "new_recent")]
     pub recent: VecDeque<String>,
+}
+
+fn new_rss_feeds() -> Arc<Mutex<Vec<RssFeed>>> {
+    Arc::new(Mutex::new(Vec::new()))
 }
 
 fn new_recent() -> VecDeque<String> {
@@ -57,7 +64,7 @@ impl State {
             serde_json::from_reader(reader)?
         } else {
             State {
-                rss_feeds: Vec::new(),
+                rss_feeds: new_rss_feeds(),
                 recent: new_recent(),
                 queue: VecDeque::new(),
                 uris: HashMap::new(),
@@ -72,49 +79,6 @@ impl State {
         let writer = BufWriter::new(file);
         serde_json::to_writer_pretty(writer, &self)?;
         Ok(())
-    }
-
-    pub async fn update_feeds(&mut self) {
-        let mut futs = Vec::with_capacity(self.rss_feeds.len());
-        for feed in &mut self.rss_feeds {
-            futs.push(feed.load());
-        }
-        join_all(futs).await;
-    }
-
-    pub fn get_episodes(&self) -> Vec<(&String, &Item)> {
-        let mut episodes: Vec<(&String, &Item)> = self
-            .rss_feeds
-            .iter()
-            .filter_map(|feed| {
-                if let Some(chan) = &feed.channel {
-                    let bound = min(chan.items.len(), 50);
-                    let zipped = chan.items.iter().map(|item| (&chan.title, item));
-                    Some(zipped.take(bound))
-                } else {
-                    None
-                }
-            })
-            .flatten()
-            .collect();
-        episodes.sort_by(Self::cmp_date);
-        return episodes;
-    }
-
-    fn cmp_date(date1: &(&String, &Item), date2: &(&String, &Item)) -> Ordering {
-        let dates = (
-            date1
-                .1
-                .pub_date()
-                .map(DateTime::parse_from_rfc2822)
-                .map(Result::ok),
-            date2
-                .1
-                .pub_date()
-                .map(DateTime::parse_from_rfc2822)
-                .map(Result::ok),
-        );
-        return dates.1.cmp(&dates.0);
     }
 
     pub fn insert_playable(&mut self, uri: String, progress: u64) {
@@ -151,4 +115,71 @@ impl State {
     pub fn get_pos(&self, uri: &str) -> Option<u64> {
         self.uris.get(uri).map(|p| p.progress)
     }
+}
+
+fn cmp_date(date1: &(&String, &Item), date2: &(&String, &Item)) -> Ordering {
+    let dates = (
+        date1
+            .1
+            .pub_date()
+            .map(DateTime::parse_from_rfc2822)
+            .map(Result::ok),
+        date2
+            .1
+            .pub_date()
+            .map(DateTime::parse_from_rfc2822)
+            .map(Result::ok),
+    );
+    return dates.1.cmp(&dates.0);
+}
+
+fn get_recent_episodes(feeds: &Vec<RssFeed>) -> Vec<(String, Item)> {
+    let mut episodes: Vec<(String, Item)> = feeds
+        .into_iter()
+        .filter_map(|feed| {
+            if let Some(chan) = &feed.channel {
+                let bound = min(chan.items.len(), 50);
+                let zipped = chan
+                    .items
+                    .iter()
+                    .map(move |item| (chan.title.clone(), item.clone()));
+                Some(zipped.take(bound))
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect();
+    episodes.sort_by(|(t1, i1), (t2, i2)| cmp_date(&(t1, i1), &(t2, i2)));
+    episodes
+}
+
+async fn refresh_feeds(feeds: &mut Vec<RssFeed>) {
+    let mut futs = Vec::with_capacity(feeds.len());
+    for feed in feeds {
+        futs.push(feed.load());
+    }
+    join_all(futs).await;
+}
+
+pub fn start_refresh_thread(
+    rss_feeds: Arc<Mutex<Vec<RssFeed>>>,
+    episodes: Arc<Mutex<Vec<(String, Item)>>>,
+) {
+    let mut update_interval = time::interval(Duration::from_millis(100_000));
+    tokio::spawn(async move {
+        loop {
+            update_interval.tick().await;
+            let mut feed_copy = if let Ok(rss_feeds) = rss_feeds.lock() {
+                rss_feeds.clone()
+            } else {
+                continue;
+            };
+            refresh_feeds(&mut feed_copy).await;
+            let eps = get_recent_episodes(&feed_copy);
+            if let Ok(mut episodes) = episodes.lock() {
+                *episodes = eps;
+            }
+        }
+    });
 }

@@ -1,8 +1,14 @@
-use std::{collections::VecDeque, io::Stdout, path::PathBuf};
+use std::{
+    collections::VecDeque,
+    io::Stdout,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use chrono::DateTime;
 use crossterm::event::{KeyCode, KeyEvent};
 use gstreamer::State;
+use rss::Item;
 use tokio::sync::mpsc::Sender;
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -24,6 +30,7 @@ pub struct UiState {
     cursor_position: [usize; TAB_TITLES.len()],
     log: VecDeque<String>,
     file_prompt: Option<(String, bool, Option<usize>, Vec<String>)>,
+    pub episodes: Arc<Mutex<Vec<(String, Item)>>>,
     tx: Sender<Cmd>,
 }
 impl UiState {
@@ -33,6 +40,7 @@ impl UiState {
             cursor_position: [0; TAB_TITLES.len()],
             log: VecDeque::new(),
             file_prompt: None,
+            episodes: Arc::new(Mutex::new(Vec::new())),
             tx,
         }
     }
@@ -45,7 +53,15 @@ impl UiState {
         match self.tab_index {
             0 => player.state.recent.len() + player.state.queue.len() - 1,
             // 1 => EPISODES (lots, no point in calculating max?).
-            2 => player.state.rss_feeds.len() - 1,
+            2 => {
+                player
+                    .state
+                    .rss_feeds
+                    .lock()
+                    .map(|v| v.len())
+                    .unwrap_or(usize::MAX)
+                    - 1
+            }
             // 3 => LOG
             _ => usize::MAX,
         }
@@ -141,21 +157,18 @@ impl UiState {
                                 }
                             }
                         } else if self.tab_index == 1 {
-                            let episodes = player.state.get_episodes();
-                            if let Some((_, episode)) = episodes.get(self.get_cursor_pos()) {
-                                self.log_event(format!("Queue : {episode:?}"));
-                                if let Some(url) = episode.enclosure() {
-                                    if let Err(err) =
-                                        self.tx.send(Cmd::Queue(url.url.clone())).await
-                                    {
-                                        self.log_event(format!("Queue error: {err}"));
-                                    }
-                                }
+                            let url = if let Ok(eps) = self.episodes.lock() {
+                                eps.get(self.get_cursor_pos())
+                                    .and_then(|e| e.1.enclosure())
+                                    .map(|enc| enc.url.clone())
                             } else {
-                                self.log_event(format!(
-                                    "failed queue: index: {}",
-                                    self.get_cursor_pos()
-                                ));
+                                None
+                            };
+
+                            if let Some(url) = url {
+                                if let Err(err) = self.tx.send(Cmd::Queue(url)).await {
+                                    self.log_event(format!("{err}"));
+                                }
                             }
                         }
                     }
@@ -287,36 +300,35 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &m
     let half_height = (chunks[2].height - 2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
 
-    let episodes: Vec<ListItem> = player
-        .state
-        // TODO: need to cache this, expensive to compute every time
-        .get_episodes()
-        .iter()
-        .enumerate()
-        .skip(first)
-        .take(chunks[2].height.into())
-        .map(|(i, (chan_title, m))| {
-            let asd = String::from("n/a");
-            let title = m.title.as_ref().unwrap_or(&asd);
-            let x = m
-                .pub_date()
-                .map(DateTime::parse_from_rfc2822)
-                .map(Result::ok)
-                .flatten()
-                .map(|dt| dt.date().naive_utc().to_string());
+    if let Ok(episodes) = ui_state.episodes.lock() {
+        let episodes: Vec<ListItem> = episodes
+            .iter()
+            .enumerate()
+            .skip(first)
+            .take(chunks[2].height.into())
+            .map(|(i, (chan_title, m))| {
+                let asd = String::from("n/a");
+                let title = m.title.as_ref().unwrap_or(&asd);
+                let x = m
+                    .pub_date()
+                    .map(DateTime::parse_from_rfc2822)
+                    .map(Result::ok)
+                    .flatten()
+                    .map(|dt| dt.date().naive_utc().to_string());
 
-            let content = format!("{i}: {} {chan_title} {title}", x.as_ref().unwrap_or(&asd));
-            let item = ListItem::new(content);
-            if ui_state.get_cursor_pos() == i {
-                item.style(Style::default().fg(Color::Black).bg(Color::White))
-            } else {
-                item
-            }
-        })
-        .collect();
-    let episodes =
-        List::new(episodes).block(Block::default().borders(Borders::ALL).title("Episodes"));
-    f.render_widget(episodes, chunks[2]);
+                let content = format!("{i}: {} {chan_title} {title}", x.as_ref().unwrap_or(&asd));
+                let item = ListItem::new(content);
+                if ui_state.get_cursor_pos() == i {
+                    item.style(Style::default().fg(Color::Black).bg(Color::White))
+                } else {
+                    item
+                }
+            })
+            .collect();
+        let episodes =
+            List::new(episodes).block(Block::default().borders(Borders::ALL).title("Episodes"));
+        f.render_widget(episodes, chunks[2]);
+    }
 }
 
 fn draw_feed_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut UiState) {
@@ -340,34 +352,34 @@ fn draw_feed_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut U
     let half_height = (chunks[2].height - 2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
 
-    let feeds: Vec<ListItem> = player
-        .state
-        .rss_feeds
-        .iter()
-        .enumerate()
-        .skip(first)
-        .take(chunks[2].height as usize)
-        .map(|(i, m)| {
-            let text = if let Some(x) = &m.channel {
-                &x.title
-            } else {
-                &m.uri
-            };
-            let content = vec![Spans::from(Span::raw(format!(
-                "{}: {:?}",
-                i,
-                last_n(text, chunks[2].width.saturating_sub(5))
-            )))];
-            let item = ListItem::new(content);
-            if ui_state.get_cursor_pos() == i {
-                item.style(Style::default().fg(Color::Black).bg(Color::White))
-            } else {
-                item
-            }
-        })
-        .collect();
-    let feeds = List::new(feeds).block(Block::default().borders(Borders::ALL).title("Feeds"));
-    f.render_widget(feeds, chunks[2]);
+    if let Ok(rss_feeds) = player.state.rss_feeds.lock() {
+        let feeds: Vec<ListItem> = rss_feeds
+            .iter()
+            .enumerate()
+            .skip(first)
+            .take(chunks[2].height as usize)
+            .map(|(i, m)| {
+                let text = if let Some(x) = &m.channel {
+                    &x.title
+                } else {
+                    &m.uri
+                };
+                let content = vec![Spans::from(Span::raw(format!(
+                    "{}: {:?}",
+                    i,
+                    last_n(text, chunks[2].width.saturating_sub(5))
+                )))];
+                let item = ListItem::new(content);
+                if ui_state.get_cursor_pos() == i {
+                    item.style(Style::default().fg(Color::Black).bg(Color::White))
+                } else {
+                    item
+                }
+            })
+            .collect();
+        let feeds = List::new(feeds).block(Block::default().borders(Borders::ALL).title("Feeds"));
+        f.render_widget(feeds, chunks[2]);
+    }
 }
 
 const RECENT_SIZE: usize = 3;

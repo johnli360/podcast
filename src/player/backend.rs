@@ -1,5 +1,4 @@
-use std::{fs::File, io::Write, time::Duration};
-use futures::future::join_all;
+use std::time::Duration;
 use tokio::{
     select,
     sync::mpsc::{Receiver, Sender},
@@ -11,7 +10,7 @@ use tui::{backend::CrosstermBackend, Terminal};
 use crate::ui::{draw_ui, UiState, UiUpdate};
 
 use super::{
-    state::{RssFeed, State},
+    state::{start_refresh_thread, RssFeed, State},
     Cmd,
 };
 
@@ -21,17 +20,15 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
     tokio::spawn(async move {
         let mut ui_state = UiState::new(ui_cmd_tx);
         let mut player = Player::new();
+        start_refresh_thread(player.state.rss_feeds.clone(), ui_state.episodes.clone());
         let bus = player.playbin.bus().unwrap();
         let mut bus_stream = bus.stream();
         let mut ui_interval = time::interval(Duration::from_millis(100));
-        let mut feed_interval = time::interval(Duration::from_millis(60_000));
 
         let stdout = std::io::stdout();
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend).expect("hmm2");
 
-        let mut handle = refresh_feeds(player.state.rss_feeds.clone());
-        let mut i = 100;
         loop {
             select! {
             Some(ui_update) = ui_rx.recv() => {
@@ -55,41 +52,12 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
                 }
                 draw_ui(&mut terminal, &mut player, &mut ui_state);
 
-                // if i == 0 {
-                                   // i = 600;
-            /*     } else { */
-                    /* if i % 100 == 0 { */
-                        /* ui_state.log_event(format!("left: {}", (i*100) / 1000)); */
-                    /* } */
-                    /* i -= 1; */
-                /* } */
-            }
-            _ = feed_interval.tick() => {
-                    match (&mut handle).await {
-                        Ok(feeds)=> player.state.rss_feeds=feeds,
-                        Err(err) => ui_state.log_event(format!("feed thread {err}")),
-                    }
-                    ui_state.log_event(format!("cloning"));
-                    handle = refresh_feeds(player.state.rss_feeds.clone());
-                    ui_state.log_event(format!("updated"));
-
             }
             }
         }
     });
 
     tx
-}
-
-fn refresh_feeds(mut feeds: Vec<RssFeed>) -> tokio::task::JoinHandle<Vec<RssFeed>> {
-    tokio::spawn(async move {
-        let mut futs = Vec::with_capacity(feeds.len());
-        for feed in &mut feeds {
-            futs.push(feed.load());
-        }
-        join_all(futs).await;
-        feeds
-    })
 }
 
 async fn run_cmd(cmd: Cmd, player: &mut Player, ui: &mut UiState) -> bool {
@@ -106,8 +74,9 @@ async fn run_cmd(cmd: Cmd, player: &mut Player, ui: &mut UiState) -> bool {
                 uri: url,
                 channel: None,
             };
-            player.state.rss_feeds.push(x);
-            // player.state.update_feeds().await;
+            if let Ok(mut feeds) = player.state.rss_feeds.lock() {
+                feeds.push(x);
+            }
         }
         Cmd::Shutdown | Cmd::Quit => {
             player.update_state();
