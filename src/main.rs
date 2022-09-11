@@ -7,17 +7,25 @@ mod macros;
 
 use podaemon::player::{self, Cmd};
 use podaemon::ui::UiUpdate;
+use podaemon::ui::_log;
 // use rss::Channel;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
+use std::collections::VecDeque;
 use std::env;
 use std::io::stdout;
+use std::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
+    unsafe {
+        let msgs = VecDeque::with_capacity(50);
+        podaemon::ui::LOG = Mutex::new(Some(msgs));
+    }
     console_subscriber::init();
+    logln!("init");
     gstreamer::init().unwrap();
     execute!(stdout(), EnterAlternateScreen)?;
 
@@ -41,7 +49,7 @@ async fn main() -> Result<(), std::io::Error> {
         });
     }
     if let Err(err) = terminal::enable_raw_mode() {
-        eprintln_raw!("{err}");
+        logln!("{err}");
     };
 
     let key_thread = start_key_thread(tx3, ui_tx3);
@@ -50,7 +58,7 @@ async fn main() -> Result<(), std::io::Error> {
     key_thread.join().unwrap();
 
     if let Err(err) = terminal::disable_raw_mode() {
-        eprintln_raw!("{err}");
+        logln!("{err}");
     };
 
     execute!(stdout(), LeaveAlternateScreen)?;
@@ -62,30 +70,21 @@ async fn ploop(mut queue: Receiver<Cmd>, ui_rx: Receiver<UiUpdate>) {
     while let Some(cmd) = queue.recv().await {
         if cmd == Cmd::Quit {
             if let Err(err) = p.send(player::Cmd::Shutdown).await {
-                eprintln_raw!("{err}");
+                logln!("{err}");
             }
             p.closed().await;
             return;
         }
 
         if let Err(err) = p.send(cmd).await {
-            eprintln_raw!("{err}");
+            logln!("{err}");
         }
     }
 }
 
-async fn log(ui_tx: Sender<UiUpdate>, msg: String) {
-    if let Err(err) = ui_tx.send(UiUpdate::Log(msg)).await {
-        eprintln_raw!("{err}");
-    }
-}
 async fn listen(queue: Sender<Cmd>, ui_tx: Sender<UiUpdate>, addr: &str) {
     let listener = TcpListener::bind(addr).await.unwrap();
-    log(
-        ui_tx,
-        format!("listening on: {}", listener.local_addr().unwrap()),
-    )
-    .await;
+    logln!("listening on: {}", listener.local_addr().unwrap());
 
     let mut buf = String::new();
     while let Ok((mut socket, _addr)) = listener.accept().await {
@@ -94,7 +93,7 @@ async fn listen(queue: Sender<Cmd>, ui_tx: Sender<UiUpdate>, addr: &str) {
                 for line in buf.lines() {
                     if let Some(cmd) = player::parse_cmd(line) {
                         if let Err(msg) = queue.send(cmd).await {
-                            eprintln_raw!("receiver dropped: {}", msg);
+                            logln!("receiver dropped: {}", msg);
                         }
                     }
                 }
@@ -103,7 +102,7 @@ async fn listen(queue: Sender<Cmd>, ui_tx: Sender<UiUpdate>, addr: &str) {
         }
         buf.clear();
     }
-    println_raw!("loop ended");
+    logln!("loop ended");
 }
 
 fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::JoinHandle<()> {
@@ -111,14 +110,22 @@ fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::J
         let mut done = false;
         let mut editing = false;
         while let Ok(c) = read() {
-            if let Event::Key(event @ KeyEvent { code, modifiers, kind: _, state: _ }) = c {
+            if let Event::Key(
+                event @ KeyEvent {
+                    code,
+                    modifiers,
+                    kind: _,
+                    state: _,
+                },
+            ) = c
+            {
                 use KeyCode::Char;
                 // ui_tx
                 // .blocking_send(UiUpdate::Log(format!("Key: {c:?}, editing: {editing}")))
                 // .unwrap();
                 if editing {
                     if let Err(err) = ui_tx.blocking_send(UiUpdate::KeyEvent(event)) {
-                        eprintln_raw!("key error: {err}");
+                        logln!("key error: {err}");
                     }
                     match code {
                         KeyCode::Enter | KeyCode::Esc => {
@@ -137,7 +144,7 @@ fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::J
                     Char(' ') => Some(tx3.blocking_send(Cmd::PlayPause)),
                     Char('o') => {
                         if let Err(err) = ui_tx.blocking_send(UiUpdate::BrowseFile) {
-                            eprintln_raw!("key error: {err}");
+                            logln!("key error: {err}");
                         } else {
                             editing = true;
                         };
@@ -167,27 +174,23 @@ fn start_key_thread(tx3: Sender<Cmd>, ui_tx: Sender<UiUpdate>) -> std::thread::J
                     | KeyCode::Down
                     | KeyCode::Enter => {
                         if let Err(err) = ui_tx.blocking_send(UiUpdate::KeyEvent(event)) {
-                            eprintln_raw!("key error: {err}");
+                            logln!("key error: {err}");
                         };
                         None
                     }
                     KeyCode::Tab => {
                         if let Err(err) = ui_tx.blocking_send(UiUpdate::Tab) {
-                            eprintln_raw!("key error: {err}");
+                            logln!("key error: {err}");
                         };
                         None
                     }
                     c => {
-                        if let Err(err) = ui_tx.blocking_send(UiUpdate::Log(format!(
-                            "pressed: {c:?}, mods: {modifiers:?}"
-                        ))) {
-                            eprintln_raw!("{err}");
-                        }
+                        logln!("pressed: {c:?}, mods: {modifiers:?}");
                         None
                     }
                 };
                 if let Some(Err(err)) = res {
-                    eprintln_raw!("key error: {err}");
+                    logln!("key error: {err}");
                 }
             }
             if done {

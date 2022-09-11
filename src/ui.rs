@@ -1,3 +1,4 @@
+use super::dir::children;
 use std::{
     collections::VecDeque,
     io::Stdout,
@@ -19,16 +20,25 @@ use tui::{
     Frame, Terminal,
 };
 
-use crate::{
-    dir::children,
-    player::{Cmd, Player},
-};
+use crate::player::{Cmd, Player};
 const TAB_TITLES: &[&str] = &["Player", "Episodes", "Feeds", "Log"];
+
+pub static mut LOG: Mutex<Option<VecDeque<String>>> = Mutex::new(None);
+pub fn _log(msg: String) {
+    unsafe {
+        if let Ok(mut log) = LOG.lock() {
+            let log = log.as_mut().expect("log uninitialised");
+            log.push_front(msg);
+            if log.len() == log.capacity() {
+                log.pop_back();
+            }
+        }
+    }
+}
 
 pub struct UiState {
     pub tab_index: usize,
     cursor_position: [usize; TAB_TITLES.len()],
-    log: VecDeque<String>,
     file_prompt: Option<(String, bool, Option<usize>, Vec<String>)>,
     pub episodes: Arc<Mutex<Vec<(String, Item)>>>,
     tx: Sender<Cmd>,
@@ -38,7 +48,6 @@ impl UiState {
         Self {
             tab_index: 0,
             cursor_position: [0; TAB_TITLES.len()],
-            log: VecDeque::new(),
             file_prompt: None,
             episodes: Arc::new(Mutex::new(Vec::new())),
             tx,
@@ -72,9 +81,6 @@ impl UiState {
             UiUpdate::Tab => {
                 let new_index = (self.tab_index + 1) % TAB_TITLES.len();
                 self.tab_index = new_index;
-            }
-            UiUpdate::Log(msg) => {
-                self.log_event(msg);
             }
             UiUpdate::BrowseFile => {
                 let init = if self.tab_index == 0 {
@@ -149,11 +155,11 @@ impl UiState {
                                     uri
                                 };
                                 if let Err(err) = self.tx.send(Cmd::Queue(uri)).await {
-                                    self.log_event(format!("{err}"));
+                                    logln!("{err}");
                                 }
                             } else if self.tab_index == 2 {
                                 if let Err(err) = self.tx.send(Cmd::Subscribe(s)).await {
-                                    self.log_event(format!("Subscribe error: {err}"));
+                                    logln!("Subscribe error: {err}");
                                 }
                             }
                         } else if self.tab_index == 1 {
@@ -167,7 +173,7 @@ impl UiState {
 
                             if let Some(url) = url {
                                 if let Err(err) = self.tx.send(Cmd::Queue(url)).await {
-                                    self.log_event(format!("{err}"));
+                                    logln!("{err}");
                                 }
                             }
                         }
@@ -196,19 +202,11 @@ impl UiState {
             }
         }
     }
-
-    pub fn log_event(&mut self, msg: String) {
-        self.log.push_front(msg);
-        if self.log.len() > 40 {
-            self.log.pop_back();
-        }
-    }
 }
 
 #[derive(Debug)]
 pub enum UiUpdate {
     Tab,
-    Log(String),
     BrowseFile,
     KeyEvent(KeyEvent),
 }
@@ -236,9 +234,9 @@ pub fn draw_ui(
 
         match ui_state.tab_index {
             0 => draw_player_tab(f, player, ui_state),
-            1 => draw_episodes_tab(f, player, ui_state),
+            1 => draw_episodes_tab(f, ui_state),
             2 => draw_feed_tab(f, player, ui_state),
-            3 => draw_event_log_tab(f, ui_state),
+            3 => draw_event_log_tab(f),
             _ => (),
         }
     });
@@ -279,7 +277,7 @@ fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut
     }
 }
 
-fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut UiState) {
+fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -524,22 +522,24 @@ const fn state_to_str(state: State) -> &'static str {
     }
 }
 
-fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &UiState) {
+fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
         .constraints([Constraint::Length(2), Constraint::Min(2)].as_ref())
         .split(f.size());
 
-    let events: Vec<ListItem> = ui_state
-        .log
-        .iter()
-        .enumerate()
-        .map(|(i, m)| {
-            let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
-            ListItem::new(content)
-        })
-        .collect();
-    let events = List::new(events).block(Block::default().borders(Borders::ALL).title("Log"));
-    f.render_widget(events, chunks[1]);
+    if let Ok(log) = unsafe { LOG.lock() } {
+        let log = log.as_ref().expect("");
+        let events: Vec<ListItem> = log
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
+                ListItem::new(content)
+            })
+            .collect();
+        let events = List::new(events).block(Block::default().borders(Borders::ALL).title("Log"));
+        f.render_widget(events, chunks[1]);
+    }
 }

@@ -7,7 +7,7 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tui::{backend::CrosstermBackend, Terminal};
 
-use crate::ui::{draw_ui, UiState, UiUpdate};
+use crate::ui::{draw_ui, UiState, UiUpdate, _log};
 
 use super::{
     state::{start_refresh_thread, RssFeed, State},
@@ -85,7 +85,7 @@ async fn run_cmd(cmd: Cmd, player: &mut Player, ui: &mut UiState) -> bool {
             }
             player.set_null();
             if let Err(err) = player.state.to_disc() {
-                eprintln_raw!("{err}");
+                logln!("{err}");
             }
             return false;
         }
@@ -111,9 +111,9 @@ async fn run_cmd(cmd: Cmd, player: &mut Player, ui: &mut UiState) -> bool {
 
 fn log_delete(ui: &mut UiState, index: usize, uri: Option<String>) {
     if let Some(uri) = uri {
-        ui.log_event(format!("Deleting {index}: {uri}"));
+        logln!("Deleting {index}: {uri}");
     } else {
-        ui.log_event(format!("Deleting {index}: no such element"));
+        logln!("Deleting {index}: no such element");
     }
 }
 
@@ -129,17 +129,17 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
             {
                 player.current_uri = None;
             }
-            ui.log_event(format!(
+            logln!(
                 "Error received from element {:?}: {} ({:?})",
                 err.src().map(|s| s.path_string()),
                 err.error(),
                 err.debug()
-            ));
+            );
         }
         MessageView::Eos(..) => {
-            ui.log_event("End-Of-Stream reached.".into());
+            logln!("End-Of-Stream reached.");
             if let Some(uri) = &player.current_uri {
-                ui.log_event(format!("finished {uri}"));
+                logln!("finished {uri}");
                 player.state.reset_pos(uri);
             }
             if !player.next() {
@@ -162,10 +162,10 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
                     player.update_state();
                 };
 
-                ui.log_event(format!(
+                logln!(
                     "Pipeline state: {:?} -> {:?}",
                     old_state, new_state
-                ));
+                );
 
                 player.playing = new_state == gst::State::Playing;
                 player.play_state = new_state;
@@ -179,14 +179,14 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
                             // ui.log_event(format!("Seeking is ENABLED from {} to {}", start, end));
                             if let Some(pos) = player.pending_seek.take() {
                                 // println_raw!("seeking to pending: {pos}");
-                                ui.log_event(format!("seeking to pending: {pos}"));
+                                logln!("seeking to pending: {pos}");
                                 player.seek(pos);
                             }
                         } else {
-                            ui.log_event("Seeking is DISABLED for this stream.".to_string());
+                            logln!("Seeking is DISABLED for this stream.");
                         }
                     } else {
-                        eprintln_raw!("Seeking query failed.")
+                        logln!("Seeking query failed.")
                     }
                 }
             }
@@ -253,7 +253,7 @@ impl Player {
         let curi = self.current_uri.as_ref().unwrap();
         self.pending_seek = self.state.get_pos(curi);
         if let Err(err) = self.playbin.set_state(gst::State::Playing) {
-            eprintln_raw!("Unable to set the playbin to the `Playing` state: {err}");
+            logln!("Unable to set the playbin to the `Playing` state: {err}");
         }
     }
 
@@ -327,7 +327,7 @@ impl Player {
             gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
             gst::ClockTime::from_seconds(pos),
         ) {
-            eprintln_raw!("failed to seek: {err}");
+            logln!("failed to seek: {err}");
         }
     }
 
@@ -343,7 +343,7 @@ impl Player {
             };
             self.seek(new);
         } else {
-            eprintln_raw!("failed seek_relative (query_position())");
+            logln!("failed seek_relative (query_position())");
         }
     }
 

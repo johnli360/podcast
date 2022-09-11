@@ -1,5 +1,6 @@
 use strum_macros::EnumString;
 use strum_macros::{AsStaticStr, Display};
+use crate::ui::_log;
 
 #[derive(Debug, EnumString, AsStaticStr, Display, PartialEq, Eq)]
 #[strum(serialize_all = "snake_case")]
@@ -25,7 +26,7 @@ pub fn parse_cmd(buf: &str) -> Option<Cmd> {
     } else if let cmd @ Some(_) = parse_cmd_arg(buf) {
         cmd
     } else {
-        eprintln_raw!("failed to parse: {buf}");
+        logln!("asd");
         None
     }
 }

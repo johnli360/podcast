@@ -10,6 +10,7 @@ use std::io::{BufReader, BufWriter};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time;
+use crate::ui::_log;
 
 const FILE: &str = "state";
 
@@ -166,7 +167,7 @@ pub fn start_refresh_thread(
     rss_feeds: Arc<Mutex<Vec<RssFeed>>>,
     episodes: Arc<Mutex<Vec<(String, Item)>>>,
 ) {
-    let mut update_interval = time::interval(Duration::from_millis(100_000));
+    let mut update_interval = time::interval(Duration::from_millis(10_000));
     tokio::spawn(async move {
         loop {
             update_interval.tick().await;
