@@ -37,13 +37,13 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
             }
             Some(cmd) = rx.recv() => {
                 // ui_state.log_event(format!("new cmd: {cmd:?}"));
-                if !run_cmd(cmd, &mut player, &mut ui_state).await {
+                if !run_cmd(cmd, &mut player).await {
                         return
                 }
             }
             msg = bus_stream.next() => {
                 if let Some(msg) = msg {
-                    handle_message(&mut player, &msg, &mut ui_state)
+                    handle_message(&mut player, &msg)
                 }
             }
             _ = ui_interval.tick() => {
@@ -60,7 +60,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
     tx
 }
 
-async fn run_cmd(cmd: Cmd, player: &mut Player, ui: &mut UiState) -> bool {
+async fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
     match cmd {
         Cmd::Play => player.play(),
         Cmd::Pause => player.pause(),
@@ -99,17 +99,17 @@ async fn run_cmd(cmd: Cmd, player: &mut Player, ui: &mut UiState) -> bool {
         }
         Cmd::DeleteQueue(index) => {
             let uri = player.state.queue.remove(index);
-            log_delete(ui, index, uri);
+            log_delete(index, uri);
         }
         Cmd::DeleteRecent(index) => {
             let uri = player.state.recent.remove(index);
-            log_delete(ui, index, uri);
+            log_delete(index, uri);
         }
     }
     true
 }
 
-fn log_delete(ui: &mut UiState, index: usize, uri: Option<String>) {
+fn log_delete(index: usize, uri: Option<String>) {
     if let Some(uri) = uri {
         logln!("Deleting {index}: {uri}");
     } else {
@@ -117,7 +117,7 @@ fn log_delete(ui: &mut UiState, index: usize, uri: Option<String>) {
     }
 }
 
-fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
+fn handle_message(player: &mut Player, msg: &gst::Message) {
     use gst::MessageView;
 
     match msg.view() {
@@ -162,10 +162,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
                     player.update_state();
                 };
 
-                logln!(
-                    "Pipeline state: {:?} -> {:?}",
-                    old_state, new_state
-                );
+                logln!("Pipeline state: {:?} -> {:?}", old_state, new_state);
 
                 player.playing = new_state == gst::State::Playing;
                 player.play_state = new_state;
@@ -173,7 +170,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message, ui: &mut UiState) {
                 if player.playing {
                     let mut seeking = gst::query::Seeking::new(gst::Format::Time);
                     if player.playbin.query(&mut seeking) {
-                        let (seekable, start, end) = seeking.result();
+                        let (seekable, _start, _end) = seeking.result();
                         player.seek_enabled = seekable;
                         if seekable {
                             // ui.log_event(format!("Seeking is ENABLED from {} to {}", start, end));

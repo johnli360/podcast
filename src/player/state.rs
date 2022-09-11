@@ -10,7 +10,6 @@ use std::io::{BufReader, BufWriter};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time;
-use crate::ui::_log;
 
 const FILE: &str = "state";
 
@@ -131,12 +130,12 @@ fn cmp_date(date1: &(&String, &Item), date2: &(&String, &Item)) -> Ordering {
             .map(DateTime::parse_from_rfc2822)
             .map(Result::ok),
     );
-    return dates.1.cmp(&dates.0);
+    dates.1.cmp(&dates.0)
 }
 
-fn get_recent_episodes(feeds: &Vec<RssFeed>) -> Vec<(String, Item)> {
+fn get_recent_episodes(feeds: &[RssFeed]) -> Vec<(String, Item)> {
     let mut episodes: Vec<(String, Item)> = feeds
-        .into_iter()
+        .iter()
         .filter_map(|feed| {
             if let Some(chan) = &feed.channel {
                 let bound = min(chan.items.len(), 50);

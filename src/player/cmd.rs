@@ -1,6 +1,6 @@
+use crate::ui::_log;
 use strum_macros::EnumString;
 use strum_macros::{AsStaticStr, Display};
-use crate::ui::_log;
 
 #[derive(Debug, EnumString, AsStaticStr, Display, PartialEq, Eq)]
 #[strum(serialize_all = "snake_case")]

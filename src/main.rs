@@ -33,26 +33,25 @@ async fn main() -> Result<(), std::io::Error> {
     let tx2 = tx.clone();
     let tx3 = tx.clone();
     let (ui_tx, ui_rx) = mpsc::channel::<UiUpdate>(64);
-    let ui_tx2 = ui_tx.clone();
-    let ui_tx3 = ui_tx.clone();
+    let ui_tx_key_thread = ui_tx.clone();
 
     if let Ok(port) = env::var("PORT") {
         {
             let addr = format!("192.168.10.3:{}", &port);
             tokio::spawn(async move {
-                listen(tx, ui_tx, &addr).await;
+                listen(tx, &addr).await;
             });
         }
         tokio::spawn(async move {
             let addr = format!("127.0.0.1:{port}");
-            listen(tx2, ui_tx2, &addr).await;
+            listen(tx2, &addr).await;
         });
     }
     if let Err(err) = terminal::enable_raw_mode() {
         logln!("{err}");
     };
 
-    let key_thread = start_key_thread(tx3, ui_tx3);
+    let key_thread = start_key_thread(tx3, ui_tx_key_thread);
     ploop(rx, ui_rx).await;
 
     key_thread.join().unwrap();
@@ -82,7 +81,7 @@ async fn ploop(mut queue: Receiver<Cmd>, ui_rx: Receiver<UiUpdate>) {
     }
 }
 
-async fn listen(queue: Sender<Cmd>, ui_tx: Sender<UiUpdate>, addr: &str) {
+async fn listen(queue: Sender<Cmd>, addr: &str) {
     let listener = TcpListener::bind(addr).await.unwrap();
     logln!("listening on: {}", listener.local_addr().unwrap());
 

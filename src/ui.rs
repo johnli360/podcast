@@ -115,8 +115,8 @@ impl UiState {
                 }
 
                 match code {
-                    KeyCode::Char('d') => match self.tab_index {
-                        0 => {
+                    KeyCode::Char('d') => {
+                        if self.tab_index == 0 {
                             let cpos = self.get_cursor_pos();
                             let recent_size = player.state.recent.len();
                             let cmd = if cpos < recent_size {
@@ -126,8 +126,7 @@ impl UiState {
                             };
                             self.tx.send(cmd).await.expect("Failed to send delete");
                         }
-                        _ => (),
-                    },
+                    }
 
                     KeyCode::Down | KeyCode::Char('j') => {
                         let pos = self.get_cursor_pos();
@@ -310,8 +309,7 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
                 let x = m
                     .pub_date()
                     .map(DateTime::parse_from_rfc2822)
-                    .map(Result::ok)
-                    .flatten()
+                    .and_then(Result::ok)
                     .map(|dt| dt.date().naive_utc().to_string());
 
                 let content = format!("{i}: {} {chan_title} {title}", x.as_ref().unwrap_or(&asd));
@@ -414,7 +412,7 @@ fn draw_recents<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, p
 }
 
 fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut UiState) {
-    if let Some((current_input, dirty, cmpl_ind, ref mut cmpl)) = ui_state.file_prompt.as_mut() {
+    if let Some((ref current_input, dirty, cmpl_ind, ref mut cmpl)) = ui_state.file_prompt.as_mut() {
         let chunks = Layout::default()
             .constraints([Constraint::Length(3), Constraint::Min(0)])
             .split(chunk);
@@ -422,7 +420,7 @@ fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut Ui
         let prompt = if let Some(index) = cmpl_ind {
             (*cmpl).get(*index).unwrap_or(current_input)
         } else {
-            &current_input
+            current_input
         };
         let input = Paragraph::new(&prompt[..])
             .style(Style::default())
