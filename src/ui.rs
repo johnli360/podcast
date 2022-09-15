@@ -16,7 +16,7 @@ use tui::{
     layout::{Constraint, Corner, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
+    widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Tabs},
     Frame, Terminal,
 };
 
@@ -300,7 +300,7 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
 
     if let Ok(episodes) = ui_state.episodes.lock() {
-        let episodes: Vec<ListItem> = episodes
+        let episodes: Vec<Row> = episodes
             .iter()
             .enumerate()
             .skip(first)
@@ -314,8 +314,12 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
                     .and_then(Result::ok)
                     .map(|dt| dt.date().naive_utc().to_string());
 
-                let content = format!("{i}: {} {chan_title} {title}", x.as_ref().unwrap_or(&asd));
-                let item = ListItem::new(content);
+                let item = Row::new(vec![
+                    Cell::from(i.to_string()),
+                    Cell::from(x.unwrap_or("".to_string())),
+                    Cell::from(chan_title.to_string()),
+                    Cell::from(title.to_string()),
+                ]);
                 if ui_state.get_cursor_pos() == i {
                     item.style(Style::default().fg(Color::Black).bg(Color::White))
                 } else {
@@ -323,9 +327,22 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
                 }
             })
             .collect();
-        let episodes =
-            List::new(episodes).block(Block::default().borders(Borders::ALL).title("Episodes"));
-        f.render_widget(episodes, chunks[2]);
+        let constraints = [
+            Constraint::Length(3),
+            Constraint::Length(10),
+            Constraint::Length(18),
+            Constraint::Length(chunks[2].width),
+        ];
+        let tbl = Table::new(episodes)
+            .block(Block::default().borders(Borders::ALL).title("Episodes"))
+            .header(
+                Row::new(vec!["i", "Date", "Podcast Title", "Episode Title"])
+                    .style(Style::default().fg(Color::Yellow)), // .bottom_margin(1),
+            )
+            .widths(&constraints)
+            .column_spacing(1);
+
+        f.render_widget(tbl, chunks[2]);
     }
 }
 
@@ -414,7 +431,8 @@ fn draw_recents<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, p
 }
 
 fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut UiState) {
-    if let Some((ref current_input, dirty, cmpl_ind, ref mut cmpl)) = ui_state.file_prompt.as_mut() {
+    if let Some((ref current_input, dirty, cmpl_ind, ref mut cmpl)) = ui_state.file_prompt.as_mut()
+    {
         let chunks = Layout::default()
             .constraints([Constraint::Length(3), Constraint::Min(0)])
             .split(chunk);
