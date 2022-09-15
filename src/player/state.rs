@@ -190,7 +190,13 @@ pub fn start_refresh_thread(
                 continue;
             };
             refresh_feeds(&mut feed_copy).await;
+
             let eps = get_recent_episodes(&feed_copy);
+            match rss_feeds.lock()  {
+                Ok(mut feeds) => *feeds = feed_copy,
+                Err(err) => logln!("Failed to refresh feed: {err}"),
+            }
+
             if let Ok(mut episodes) = episodes.lock() {
                 *episodes = eps;
             }

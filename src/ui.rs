@@ -380,7 +380,7 @@ fn draw_feed_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut U
                     &m.uri
                 };
                 let content = vec![Spans::from(Span::raw(format!(
-                    "{}: {:?}",
+                    "{}: {}",
                     i,
                     last_n(text, chunks[2].width.saturating_sub(5))
                 )))];
