@@ -24,7 +24,7 @@ async fn main() -> Result<(), std::io::Error> {
         let msgs = VecDeque::with_capacity(50);
         podaemon::ui::LOG = Mutex::new(Some(msgs));
     }
-    console_subscriber::init();
+    // console_subscriber::init();
     logln!("init");
     gstreamer::init().unwrap();
     execute!(stdout(), EnterAlternateScreen)?;
