@@ -1,5 +1,7 @@
+use crate::ui::_log;
 use chrono::DateTime;
 use futures::future::join_all;
+use reqwest::Client;
 use rss::{Channel, Item};
 use serde::{Deserialize, Serialize};
 use std::cmp::{min, Ordering};
@@ -26,8 +28,8 @@ pub struct RssFeed {
     pub channel: Option<Channel>,
 }
 impl RssFeed {
-    pub async fn load(&mut self) {
-        if let Ok(content) = reqwest::get(&self.uri).await {
+    pub async fn load(&mut self, client: Arc<Client>) {
+        if let Ok(content) = client.get(&self.uri).send().await {
             match content.bytes().await {
                 Ok(content) => match Channel::read_from(&content[..]) {
                     Ok(channel) => {
@@ -161,10 +163,17 @@ fn get_recent_episodes(feeds: &[RssFeed]) -> Vec<(String, Item)> {
 
 async fn refresh_feeds(feeds: &mut Vec<RssFeed>) {
     let mut futs = Vec::with_capacity(feeds.len());
-    for feed in feeds {
-        futs.push(feed.load());
+    let client = Client::builder().user_agent("007").build();
+    match client {
+        Ok(client) => {
+            let client = Arc::new(client);
+            for feed in feeds {
+                futs.push(feed.load(client.clone()));
+            }
+            join_all(futs).await;
+        }
+        Err(err) => logln!("Failed to init reqwest client: {err}"),
     }
-    join_all(futs).await;
 }
 
 pub fn start_refresh_thread(
