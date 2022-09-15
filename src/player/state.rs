@@ -28,10 +28,15 @@ pub struct RssFeed {
 impl RssFeed {
     pub async fn load(&mut self) {
         if let Ok(content) = reqwest::get(&self.uri).await {
-            if let Ok(content) = content.bytes().await {
-                if let Ok(channel) = Channel::read_from(&content[..]) {
-                    self.channel.replace(channel);
-                }
+            match content.bytes().await {
+                Ok(content) => match Channel::read_from(&content[..]) {
+                    Ok(channel) => {
+                        logln!("updated channel {}", &channel.title);
+                        self.channel.replace(channel);
+                    }
+                    Err(err) => logln!("failed to read channel {} - {err}", self.uri),
+                },
+                Err(err) => logln!("failed to update {} - {err}", self.uri),
             }
         }
     }
@@ -166,7 +171,7 @@ pub fn start_refresh_thread(
     rss_feeds: Arc<Mutex<Vec<RssFeed>>>,
     episodes: Arc<Mutex<Vec<(String, Item)>>>,
 ) {
-    let mut update_interval = time::interval(Duration::from_millis(10_000));
+    let mut update_interval = time::interval(Duration::from_millis(480_000));
     tokio::spawn(async move {
         loop {
             update_interval.tick().await;

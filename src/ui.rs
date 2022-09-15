@@ -24,11 +24,13 @@ use crate::player::{Cmd, Player};
 const TAB_TITLES: &[&str] = &["Player", "Episodes", "Feeds", "Log"];
 
 pub static mut LOG: Mutex<Option<VecDeque<String>>> = Mutex::new(None);
-pub fn _log(msg: String) {
+pub fn _log(msg: &str) {
+
+    let time = chrono::Local::now();
     unsafe {
         if let Ok(mut log) = LOG.lock() {
             let log = log.as_mut().expect("log uninitialised");
-            log.push_front(msg);
+            log.push_front(format!("{time}: {}",msg));
             if log.len() == log.capacity() {
                 log.pop_back();
             }

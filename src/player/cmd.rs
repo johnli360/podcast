@@ -26,7 +26,7 @@ pub fn parse_cmd(buf: &str) -> Option<Cmd> {
     } else if let cmd @ Some(_) = parse_cmd_arg(buf) {
         cmd
     } else {
-        logln!("asd");
+        logln!("parse failed");
         None
     }
 }
