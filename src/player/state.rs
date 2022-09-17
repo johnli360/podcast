@@ -184,15 +184,21 @@ pub fn start_refresh_thread(
     tokio::spawn(async move {
         loop {
             update_interval.tick().await;
-            let mut feed_copy = if let Ok(rss_feeds) = rss_feeds.lock() {
-                rss_feeds.clone()
+            let mut feed_copy: Vec<RssFeed> = if let Ok(rss_feeds) = rss_feeds.lock() {
+                rss_feeds
+                    .iter()
+                    .map(|RssFeed { uri, .. }| RssFeed {
+                        uri: uri.to_string(),
+                        channel: None,
+                    })
+                    .collect()
             } else {
                 continue;
             };
             refresh_feeds(&mut feed_copy).await;
 
             let eps = get_recent_episodes(&feed_copy);
-            match rss_feeds.lock()  {
+            match rss_feeds.lock() {
                 Ok(mut feeds) => *feeds = feed_copy,
                 Err(err) => logln!("Failed to refresh feed: {err}"),
             }
