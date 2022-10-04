@@ -43,10 +43,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
             }
             msg = bus_stream.next() => {
                 if let Some(msg) = msg {
-                    if !handle_message(&mut player, &msg) {
-                        player.playbin = create_playbin();
-                        bus_stream = player.playbin.bus().unwrap().stream();
-                    }
+                    handle_message(&mut player, &msg)
                 }
             }
             _ = ui_interval.tick() => {
@@ -120,28 +117,18 @@ fn log_delete(index: usize, uri: Option<String>) {
     }
 }
 
-fn handle_message(player: &mut Player, msg: &gst::Message) -> bool {
+fn handle_message(player: &mut Player, msg: &gst::Message) {
     use gst::MessageView;
 
     match msg.view() {
         MessageView::Error(err) => {
-            let source_name = err
+            if err
                 .src()
-                .map(|src| src.path_string().to_string())
-                .unwrap_or("".to_string());
-            logln!(
-                "Error received from element {:?}: {} ({:?})",
-                source_name,
-                err.error(),
-                err.debug()
-            );
-
-            if source_name.contains("uridecodebin") {
+                .map(|src| src.path_string().to_string().contains("uridecodebin"))
+                .unwrap_or(false)
+            {
                 player.current_uri = None;
-            } else if source_name.contains("sink") {
-                return false;
             }
-
             logln!(
                 "Error received from element {:?}: {} ({:?})",
                 err.src().map(|s| s.path_string()),
@@ -203,7 +190,6 @@ fn handle_message(player: &mut Player, msg: &gst::Message) -> bool {
         }
         _ => (),
     }
-    return true;
 }
 
 use gst::prelude::*;
@@ -220,17 +206,18 @@ pub struct Player {
     pending_seek: Option<u64>,
 }
 
-fn create_playbin() -> gst::Element {
-    gst::ElementFactory::make("playbin", Some("playbin")).expect("Failed to create playbin element")
-}
 impl Player {
     fn new() -> Self {
+        let playbin = gst::ElementFactory::make("playbin", Some("playbin"))
+            .expect("Failed to create playbin element");
+
         let state = State::from_disc().expect("failed to read state");
+
         Player {
             play_state: gst::State::Null,
             state,
             pending_seek: None,
-            playbin: create_playbin(),
+            playbin,
             playing: false,
             seek_enabled: false,
             duration: gst::ClockTime::NONE,
