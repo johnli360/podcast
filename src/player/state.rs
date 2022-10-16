@@ -16,9 +16,9 @@ use tokio::time;
 const FILE: &str = "state";
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Playable {
-    // uri: String,
-    progress: u64,
+pub struct Playable {
+    pub name: Option<String>,
+    pub progress: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -49,7 +49,7 @@ pub struct State {
     #[serde(default = "new_rss_feeds")]
     pub rss_feeds: Arc<Mutex<Vec<RssFeed>>>,
 
-    uris: HashMap<String, Playable>,
+    pub uris: HashMap<String, Playable>,
     #[serde(default = "VecDeque::new")]
     pub queue: VecDeque<String>,
     #[serde(default = "new_recent")]
@@ -88,8 +88,9 @@ impl State {
         Ok(())
     }
 
-    pub fn insert_playable(&mut self, uri: String, progress: u64) {
-        self.uris.insert(uri, Playable { progress });
+    // pub fn insert_playable(&mut self, uri: String, progress: u64) {
+    pub fn insert_playable(&mut self, uri: String, playable: Playable) {
+        self.uris.insert(uri, playable);
     }
 
     pub fn reset_pos(&mut self, uri: &str) {

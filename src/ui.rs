@@ -20,17 +20,16 @@ use tui::{
     Frame, Terminal,
 };
 
-use crate::player::{Cmd, Player};
+use crate::player::{state::Playable, Cmd, Player};
 const TAB_TITLES: &[&str] = &["Player", "Episodes", "Feeds", "Log"];
 
 pub static mut LOG: Mutex<Option<VecDeque<String>>> = Mutex::new(None);
 pub fn _log(msg: &str) {
-
     let time = chrono::Local::now();
     unsafe {
         if let Ok(mut log) = LOG.lock() {
             let log = log.as_mut().expect("log uninitialised");
-            log.push_front(format!("{time}: {}",msg));
+            log.push_front(format!("{time}: {}", msg));
             if log.len() == log.capacity() {
                 log.pop_back();
             }
@@ -78,7 +77,7 @@ impl UiState {
         }
     }
 
-    pub async fn update(&mut self, event: UiUpdate, player: &Player) {
+    pub async fn update(&mut self, event: UiUpdate, player: &mut Player) {
         match event {
             UiUpdate::Tab => {
                 let new_index = (self.tab_index + 1) % TAB_TITLES.len();
@@ -166,16 +165,24 @@ impl UiState {
                         } else if self.tab_index == 1 {
                             let url = if let Ok(eps) = self.episodes.lock() {
                                 eps.get(self.get_cursor_pos())
-                                    .and_then(|e| e.1.enclosure())
-                                    .map(|enc| enc.url.clone())
+                                    .and_then(|(_chan_title, item)| {
+                                        if let Some(url) = item.enclosure().map(|enc| &enc.url) {
+                                            let playable = Playable {
+                                                name: item.title.clone(),
+                                                progress: 0,
+                                            };
+                                            player.state.insert_playable(url.clone(), playable);
+                                            Some(url.clone())
+                                        } else {
+                                            None
+                                        }
+                                    })
                             } else {
                                 None
                             };
 
-                            if let Some(url) = url {
-                                if let Err(err) = self.tx.send(Cmd::Queue(url)).await {
-                                    logln!("{err}");
-                                }
+                            if let Err(err) = self.tx.send(Cmd::Queue(url.unwrap())).await {
+                                logln!("{err}");
                             }
                         }
                     }
@@ -468,6 +475,7 @@ fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut Ui
 
 fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, player: &Player) {
     //                - 2 for border
+    // let uri_map = player.state.uris;
     let half_height = (chunk.height - 2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
     let playlist: Vec<ListItem> = player
@@ -476,11 +484,17 @@ fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, 
         .iter()
         .enumerate()
         .skip(first)
-        .map(|(i, m)| {
+        .map(|(i, uri)| {
+            let name = if let Some(name) = player.state.uris.get(uri).and_then(|p| p.name.as_ref())
+            {
+                name
+            } else {
+                uri
+            };
             let content = vec![Spans::from(Span::raw(format!(
                 "{}: {}",
                 i,
-                last_n(m, chunk.width.saturating_sub(5))
+                last_n(name, chunk.width.saturating_sub(5))
             )))];
             let item = ListItem::new(content);
             let r_len = player.state.recent.len();
@@ -513,13 +527,23 @@ fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player)
     } else {
         chunk.width as usize - p_length
     };
-    let uri = if let Some(uri) = &player.current_uri {
-        last_n(uri, space)
+
+    let name = if let Some(uri) = &player.current_uri {
+        if let Some(name) = player
+            .state
+            .uris
+            .get(uri)
+            .and_then(|playable| playable.name.as_ref())
+        {
+            name
+        } else {
+            last_n(uri, space)
+        }
     } else {
         ""
     };
 
-    let text = format!("{uri} {position} / {duration}");
+    let text = format!("{name} {position} / {duration}");
     let progress = Paragraph::new(text).block(
         Block::default()
             .title(state_to_str(player.play_state))

@@ -10,7 +10,7 @@ use tui::{backend::CrosstermBackend, Terminal};
 use crate::ui::{draw_ui, UiState, UiUpdate, _log};
 
 use super::{
-    state::{start_refresh_thread, RssFeed, State},
+    state::{start_refresh_thread, Playable, RssFeed, State},
     Cmd,
 };
 
@@ -32,7 +32,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
         loop {
             select! {
             Some(ui_update) = ui_rx.recv() => {
-                ui_state.update(ui_update, &player).await;
+                ui_state.update(ui_update, &mut player).await;
                 draw_ui(&mut terminal, &mut player, &mut ui_state);
             }
             Some(cmd) = rx.recv() => {
@@ -192,7 +192,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
     }
 }
 
-use gst::prelude::*;
+use gst::{prelude::*, ClockTime};
 use gstreamer as gst;
 
 pub struct Player {
@@ -298,8 +298,16 @@ impl Player {
 
     fn update_state(&mut self) {
         if let Some(uri) = &self.current_uri {
-            if let Some(pos) = self.query_position() {
-                self.state.insert_playable(uri.to_string(), pos.seconds());
+            if let Some(pos) = self.query_position().map(ClockTime::seconds) {
+                if let Some(playable) = self.state.uris.get_mut(uri) {
+                    playable.progress = pos;
+                } else {
+                    let playable = Playable {
+                        name: None,
+                        progress: pos,
+                    };
+                    self.state.insert_playable(uri.to_string(), playable);
+                };
             }
         }
     }
