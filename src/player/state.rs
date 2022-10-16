@@ -17,7 +17,8 @@ const FILE: &str = "state";
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Playable {
-    pub name: Option<String>,
+    pub title: Option<String>,
+    pub album: Option<String>,
     pub progress: u64,
 }
 

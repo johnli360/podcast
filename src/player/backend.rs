@@ -188,6 +188,31 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
                 }
             }
         }
+
+        MessageView::Tag(tag) => {
+            if let Some(uri) = player.current_uri.as_ref() {
+                if let Some(state) = player.state.uris.get_mut(uri) {
+                    let tags = tag.tags();
+                    if let Some(artist) = tags.get::<gst::tags::Artist>() {
+                        logln!("  Artist: {}", artist.get());
+                    }
+
+                    if let Some(title) = tags.get::<gst::tags::Title>() {
+                        logln!("  Title: {}", title.get());
+                        if state.title.is_none() {
+                            state.title = Some(title.get().to_string());
+                        }
+                    }
+
+                    if let Some(album) = tags.get::<gst::tags::Album>() {
+                        logln!("  Album: {}", album.get());
+                        if state.album.is_none() {
+                            state.album = Some(album.get().to_string());
+                        }
+                    }
+                }
+            }
+        }
         _ => (),
     }
 }
@@ -303,7 +328,8 @@ impl Player {
                     playable.progress = pos;
                 } else {
                     let playable = Playable {
-                        name: None,
+                        title: None,
+                        album: None,
                         progress: pos,
                     };
                     self.state.insert_playable(uri.to_string(), playable);

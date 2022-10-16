@@ -165,10 +165,11 @@ impl UiState {
                         } else if self.tab_index == 1 {
                             let url = if let Ok(eps) = self.episodes.lock() {
                                 eps.get(self.get_cursor_pos())
-                                    .and_then(|(_chan_title, item)| {
+                                    .and_then(|(chan_title, item)| {
                                         if let Some(url) = item.enclosure().map(|enc| &enc.url) {
                                             let playable = Playable {
-                                                name: item.title.clone(),
+                                                title: item.title.clone(),
+                                                album: Some(chan_title.clone()),
                                                 progress: 0,
                                             };
                                             player.state.insert_playable(url.clone(), playable);
@@ -478,26 +479,34 @@ fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, 
     // let uri_map = player.state.uris;
     let half_height = (chunk.height - 2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
-    let playlist: Vec<ListItem> = player
+    let playlist: Vec<Row> = player
         .state
         .queue
         .iter()
         .enumerate()
         .skip(first)
         .map(|(i, uri)| {
-            let name = if let Some(name) = player.state.uris.get(uri).and_then(|p| p.name.as_ref())
+            let name = if let Some(name) = player.state.uris.get(uri).and_then(|p| p.title.as_ref())
             {
                 name
             } else {
                 uri
             };
-            let content = vec![Spans::from(Span::raw(format!(
-                "{}: {}",
-                i,
-                last_n(name, chunk.width.saturating_sub(5))
-            )))];
-            let item = ListItem::new(content);
+
+            let chan_title = player
+                .state
+                .uris
+                .get(uri)
+                .and_then(|p| p.album.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or("");
+
             let r_len = player.state.recent.len();
+            let item = Row::new(vec![
+                Cell::from(i.to_string()),
+                Cell::from(chan_title.to_string()),
+                Cell::from(name.to_string()),
+            ]);
             if ui_state.get_cursor_pos() >= r_len && i == ui_state.get_cursor_pos() - r_len {
                 item.style(Style::default().fg(Color::Black).bg(Color::White))
             } else {
@@ -505,8 +514,23 @@ fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, 
             }
         })
         .collect();
-    let playlist =
-        List::new(playlist).block(Block::default().borders(Borders::ALL).title("Playlist"));
+    let constraints = [
+        Constraint::Length(3),
+        Constraint::Length(18),
+        Constraint::Length(chunk.width),
+    ];
+
+    let playlist = Table::new(playlist)
+        .block(Block::default().borders(Borders::ALL).title("Episodes"))
+        .header(
+            Row::new(vec!["i", "Channel Title", "Title"])
+                .style(Style::default().fg(Color::Yellow)), // .bottom_margin(1),
+        )
+        .widths(&constraints)
+        .column_spacing(1);
+
+    // let playlist =
+    // List::new(playlist).block(Block::default().borders(Borders::ALL).title("Playlist"));
     f.render_widget(playlist, chunk);
 }
 
@@ -533,7 +557,7 @@ fn draw_current_info<B: Backend>(f: &mut Frame<B>, chunk: Rect, player: &Player)
             .state
             .uris
             .get(uri)
-            .and_then(|playable| playable.name.as_ref())
+            .and_then(|playable| playable.title.as_ref())
         {
             name
         } else {
