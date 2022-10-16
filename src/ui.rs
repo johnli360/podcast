@@ -411,30 +411,55 @@ fn draw_recents<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, p
     let to_skip = recent_len
         .saturating_sub(RECENT_SIZE)
         .saturating_sub(ui_state.get_cursor_pos());
-    let recent: Vec<ListItem> = player
+    let recent: Vec<Row> = player
         .state
         .recent
         .iter()
         .enumerate()
         .skip(to_skip)
         .take(RECENT_SIZE)
-        .map(|(i, m)| {
-            let content = vec![Spans::from(Span::raw(format!(
-                "{}: {}",
-                i,
-                last_n(m, chunk.width.saturating_sub(5))
-            )))];
-            let item = ListItem::new(content);
+        .map(|(i, uri)| {
+
+            let name = if let Some(name) = player.state.uris.get(uri).and_then(|p| p.title.as_ref())
+            {
+                name
+            } else {
+                uri
+            };
+
+            let chan_title = player
+                .state
+                .uris
+                .get(uri)
+                .and_then(|p| p.album.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or("");
+
+            let item = Row::new(vec![
+                Cell::from(i.to_string()),
+                Cell::from(chan_title.to_string()),
+                Cell::from(name.to_string()),
+            ]);
             if ui_state.get_cursor_pos() == recent_len - 1 - i {
                 item.style(Style::default().fg(Color::Black).bg(Color::White))
             } else {
                 item
             }
+
         })
+        .rev() //TODO: not perfect, List of rows instead?
         .collect();
-    let recent = List::new(recent)
+     let constraints = [
+        Constraint::Length(3),
+        Constraint::Length(18),
+        Constraint::Length(chunk.width),
+    ];
+
+    let recent = Table::new(recent)
         .block(Block::default().borders(Borders::ALL).title("Recent"))
-        .start_corner(Corner::BottomLeft);
+        .widths(&constraints)
+        .column_spacing(1);
+
     f.render_widget(recent, chunk);
 }
 
