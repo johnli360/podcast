@@ -41,6 +41,8 @@ pub struct UiState {
     pub tab_index: usize,
     cursor_position: [usize; TAB_TITLES.len()],
     file_prompt: Option<(String, bool, Option<usize>, Vec<String>)>,
+    prompt: Option<String>,
+    hit_number: isize,
     pub episodes: Arc<Mutex<Vec<(String, Item)>>>,
     tx: Sender<Cmd>,
 }
@@ -48,10 +50,39 @@ impl UiState {
     pub fn new(tx: Sender<Cmd>) -> UiState {
         Self {
             tab_index: 0,
+            hit_number: 0,
             cursor_position: [0; TAB_TITLES.len()],
             file_prompt: None,
+            prompt: None,
             episodes: Arc::new(Mutex::new(Vec::new())),
             tx,
+        }
+    }
+
+    fn search_ep(&mut self) {
+        if let Ok(eps) = self.episodes.lock() {
+            if let Some(prompt) = &self.prompt.as_ref().map(|p| p.to_lowercase()) {
+                let mut hit_count = 0;
+                let i = eps
+                    .iter()
+                    .enumerate()
+                    .find(|(_i, (_url, item))| {
+                        item.title()
+                            .map(|title| {
+                                let is_match = title.to_lowercase().contains(prompt);
+                                if is_match {
+                                    hit_count += 1;
+                                }
+                                is_match && hit_count > self.hit_number
+                            })
+                            .unwrap_or(false)
+                    })
+                    .map(|(i, _)| i);
+
+                if let Some(i) = i {
+                    self.cursor_position[self.tab_index] = i;
+                }
+            }
         }
     }
 
@@ -84,16 +115,20 @@ impl UiState {
                 self.tab_index = new_index;
             }
             UiUpdate::BrowseFile => {
-                let init = if self.tab_index == 0 {
-                    String::from("/home/jl")
-                } else {
-                    String::new()
-                };
+                if self.tab_index == 0 || self.tab_index == 2 {
+                    let init = if self.tab_index == 0 {
+                        String::from("/home/jl")
+                    } else {
+                        String::new()
+                    };
 
-                if self.file_prompt.is_none() {
-                    self.file_prompt = Some((init, true, None, Vec::new()));
-                } else {
-                    self.file_prompt = None;
+                    if self.file_prompt.is_none() {
+                        self.file_prompt = Some((init, true, None, Vec::new()));
+                    } else {
+                        self.file_prompt = None;
+                    }
+                } else if self.tab_index == 1 {
+                    self.prompt = Some("".to_string());
                 }
             }
             UiUpdate::KeyEvent(KeyEvent { code, .. }) => {
@@ -113,6 +148,29 @@ impl UiState {
                         }
                         return;
                     }
+                }
+
+                if let Some(prompt) = self.prompt.as_mut() {
+                    match code {
+                        KeyCode::Char('#') => {
+                            logln!("backspace");
+                            self.hit_number += 1;
+                            self.search_ep();
+                        }
+                        KeyCode::Char('*') => {
+                            self.hit_number -= 1;
+                            self.search_ep();
+                        }
+                        KeyCode::Char(c) => {
+                            prompt.push(c);
+                            self.search_ep();
+                        }
+                        KeyCode::Backspace => {
+                            prompt.pop();
+                            self.search_ep();
+                        }
+                        _ => {}
+                    };
                 }
 
                 match code {
@@ -143,6 +201,8 @@ impl UiState {
 
                     KeyCode::Esc => {
                         self.file_prompt = None;
+                        self.prompt = None;
+                        self.hit_number = 0;
                     }
                     KeyCode::Enter => {
                         if let Some((s, _, _, _)) = self.file_prompt.take() {
@@ -293,18 +353,16 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
         .constraints(
             [
                 Constraint::Length(2),
-                Constraint::Length(3),
+                // Constraint::Length(3),
                 Constraint::Min(5),
+                Constraint::Length(1),
             ]
             .as_ref(),
         )
         .split(f.size());
-    let input = Paragraph::new(format!("... {}", chunks[2].height))
-        .style(Style::default())
-        .block(Block::default().borders(Borders::ALL).title("Search"));
-    f.render_widget(input, chunks[1]);
 
-    let half_height = (chunks[2].height - 2) / 2;
+    let tbl_height = chunks[1].height;
+    let half_height = (tbl_height - 2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
 
     if let Ok(episodes) = ui_state.episodes.lock() {
@@ -312,11 +370,11 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
             .iter()
             .enumerate()
             .skip(first)
-            .take(chunks[2].height.into())
-            .map(|(i, (chan_title, m))| {
+            .take(tbl_height.into())
+            .map(|(i, (chan_title, item))| {
                 let asd = String::from("n/a");
-                let title = m.title.as_ref().unwrap_or(&asd);
-                let x = m
+                let title = item.title.as_ref().unwrap_or(&asd);
+                let x = item
                     .pub_date()
                     .map(DateTime::parse_from_rfc2822)
                     .and_then(Result::ok)
@@ -350,7 +408,13 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
             .widths(&constraints)
             .column_spacing(1);
 
-        f.render_widget(tbl, chunks[2]);
+        f.render_widget(tbl, chunks[1]);
+
+        if let Some(search) = &ui_state.prompt {
+            let input = Paragraph::new(format!(": {}", search.as_str())).style(Style::default());
+            f.render_widget(input, chunks[2]);
+        };
+        // .block(Block::default().borders(Borders::ALL).title("Search"));
     }
 }
 
@@ -419,7 +483,6 @@ fn draw_recents<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, p
         .skip(to_skip)
         .take(RECENT_SIZE)
         .map(|(i, uri)| {
-
             let name = if let Some(name) = player.state.uris.get(uri).and_then(|p| p.title.as_ref())
             {
                 name
@@ -445,11 +508,10 @@ fn draw_recents<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, p
             } else {
                 item
             }
-
         })
         .rev() //TODO: not perfect, List of rows instead?
         .collect();
-     let constraints = [
+    let constraints = [
         Constraint::Length(3),
         Constraint::Length(18),
         Constraint::Length(chunk.width),
@@ -470,12 +532,12 @@ fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut Ui
             .constraints([Constraint::Length(3), Constraint::Min(0)])
             .split(chunk);
 
-        let prompt = if let Some(index) = cmpl_ind {
+        let file_prompt = if let Some(index) = cmpl_ind {
             (*cmpl).get(*index).unwrap_or(current_input)
         } else {
             current_input
         };
-        let input = Paragraph::new(&prompt[..])
+        let input = Paragraph::new(&file_prompt[..])
             .style(Style::default())
             .block(Block::default().borders(Borders::ALL).title("Input"));
         f.render_widget(input, chunks[0]);
@@ -548,8 +610,7 @@ fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, 
     let playlist = Table::new(playlist)
         .block(Block::default().borders(Borders::ALL).title("Episodes"))
         .header(
-            Row::new(vec!["i", "Channel Title", "Title"])
-                .style(Style::default().fg(Color::Yellow)), // .bottom_margin(1),
+            Row::new(vec!["i", "Channel Title", "Title"]).style(Style::default().fg(Color::Yellow)), // .bottom_margin(1),
         )
         .widths(&constraints)
         .column_spacing(1);
