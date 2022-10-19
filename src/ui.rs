@@ -1,6 +1,7 @@
 use super::dir::children;
 use std::{
     collections::VecDeque,
+    fs::File,
     io::Stdout,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -23,13 +24,25 @@ use tui::{
 use crate::player::{state::Playable, Cmd, Player};
 const TAB_TITLES: &[&str] = &["Player", "Episodes", "Feeds", "Log"];
 
+use std::io::Write;
 pub static mut LOG: Mutex<Option<VecDeque<String>>> = Mutex::new(None);
 pub fn _log(msg: &str) {
     let time = chrono::Local::now();
+    let mut log_file = std::env::var("LOG_FILE")
+        .ok()
+        .and_then(|name| File::options().create(true).append(true).open(name).ok());
     unsafe {
         if let Ok(mut log) = LOG.lock() {
             let log = log.as_mut().expect("log uninitialised");
-            log.push_front(format!("{time}: {}", msg));
+            let msg = format!("{time}: {}", msg);
+            if let Some(Err(err)) = log_file.as_mut().map(|log_file| {
+                log_file
+                    .write(msg.as_bytes())
+                    .and(log_file.write("\n".as_bytes()))
+            }) {
+                log.push_front(err.to_string());
+            }
+            log.push_front(msg);
             if log.len() == log.capacity() {
                 log.pop_back();
             }
