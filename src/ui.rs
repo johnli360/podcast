@@ -7,13 +7,13 @@ use std::{
 };
 
 use chrono::DateTime;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use gstreamer::State;
 use rss::Item;
 use tokio::sync::mpsc::Sender;
 use tui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Corner, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Tabs},
@@ -47,6 +47,12 @@ pub struct UiState {
     tx: Sender<Cmd>,
 }
 impl UiState {
+    async fn send_cmd(&self, cmd: Cmd) {
+        if let Err(err) = self.tx.send(cmd).await {
+            logln!("{err}");
+        }
+    }
+
     pub fn new(tx: Sender<Cmd>) -> UiState {
         Self {
             tab_index: 0,
@@ -108,166 +114,201 @@ impl UiState {
         }
     }
 
+    fn search_update(&mut self, code: KeyCode) {
+        if let Some(prompt) = self.prompt.as_mut() {
+            match code {
+                KeyCode::Char('#') => {
+                    self.hit_number += 1;
+                    self.search_ep();
+                }
+                KeyCode::Char('*') => {
+                    self.hit_number -= 1;
+                    self.search_ep();
+                }
+                KeyCode::Char(c) => {
+                    prompt.push(c);
+                    self.search_ep();
+                }
+                KeyCode::Backspace => {
+                    prompt.pop();
+                    self.search_ep();
+                }
+                KeyCode::Esc => {
+                    self.prompt = None;
+                    self.hit_number = 0;
+                }
+                _ => {}
+            };
+        }
+    }
+
     pub async fn update(&mut self, event: UiUpdate, player: &mut Player) {
         match event {
-            UiUpdate::Tab => {
-                let new_index = (self.tab_index + 1) % TAB_TITLES.len();
-                self.tab_index = new_index;
-            }
-            UiUpdate::BrowseFile => {
-                if self.tab_index == 0 || self.tab_index == 2 {
-                    let init = if self.tab_index == 0 {
-                        String::from("/home/jl")
-                    } else {
-                        String::new()
-                    };
-
-                    if self.file_prompt.is_none() {
-                        self.file_prompt = Some((init, true, None, Vec::new()));
-                    } else {
-                        self.file_prompt = None;
-                    }
-                } else if self.tab_index == 1 {
-                    self.prompt = Some("".to_string());
-                }
-            }
-            UiUpdate::KeyEvent(KeyEvent { code, .. }) => {
+            UiUpdate::KeyEvent(KeyEvent {
+                code, modifiers, ..
+            }) => {
                 if self.file_prompt.is_some() {
-                    if let KeyCode::Char(c) = code {
-                        if let Some((ref mut s, ref mut dirty, ref mut index, ref mut cmp)) =
-                            self.file_prompt
-                        {
-                            if let Some(i) = index {
-                                if let Some(cmp_alt) = cmp.get_mut(*i) {
-                                    std::mem::swap(s, cmp_alt);
-                                }
-                                *index = None;
-                            }
-                            s.push(c);
-                            *dirty = true;
-                        }
-                        return;
-                    }
-                }
-
-                if let Some(prompt) = self.prompt.as_mut() {
                     match code {
-                        KeyCode::Char('#') => {
-                            logln!("backspace");
-                            self.hit_number += 1;
-                            self.search_ep();
-                        }
-                        KeyCode::Char('*') => {
-                            self.hit_number -= 1;
-                            self.search_ep();
-                        }
                         KeyCode::Char(c) => {
-                            prompt.push(c);
-                            self.search_ep();
-                        }
-                        KeyCode::Backspace => {
-                            prompt.pop();
-                            self.search_ep();
-                        }
-                        _ => {}
-                    };
-                }
-
-                match code {
-                    KeyCode::Char('d') => {
-                        if self.tab_index == 0 {
-                            let cpos = self.get_cursor_pos();
-                            let recent_size = player.state.recent.len();
-                            let cmd = if cpos < recent_size {
-                                Cmd::DeleteRecent(recent_size - cpos - 1)
-                            } else {
-                                Cmd::DeleteQueue(cpos - recent_size)
-                            };
-                            self.tx.send(cmd).await.expect("Failed to send delete");
-                        }
-                    }
-
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        let pos = self.get_cursor_pos();
-                        let bound = self.get_cursor_bound(player);
-                        if pos < bound {
-                            self.cursor_position[self.tab_index] = pos.saturating_add(1);
-                        }
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.cursor_position[self.tab_index] =
-                            self.cursor_position[self.tab_index].saturating_sub(1);
-                    }
-
-                    KeyCode::Esc => {
-                        self.file_prompt = None;
-                        self.prompt = None;
-                        self.hit_number = 0;
-                    }
-                    KeyCode::Enter => {
-                        if let Some((s, _, _, _)) = self.file_prompt.take() {
-                            if self.tab_index == 0 {
-                                let uri = if s.contains("://") {
-                                    s
-                                } else {
-                                    let mut uri = String::from("file://");
-                                    uri.push_str(&s);
-                                    uri
-                                };
-                                if let Err(err) = self.tx.send(Cmd::Queue(uri)).await {
-                                    logln!("{err}");
-                                }
-                            } else if self.tab_index == 2 {
-                                if let Err(err) = self.tx.send(Cmd::Subscribe(s)).await {
-                                    logln!("Subscribe error: {err}");
-                                }
-                            }
-                        } else if self.tab_index == 1 {
-                            let url = if let Ok(eps) = self.episodes.lock() {
-                                eps.get(self.get_cursor_pos())
-                                    .and_then(|(chan_title, item)| {
-                                        if let Some(url) = item.enclosure().map(|enc| &enc.url) {
-                                            let playable = Playable {
-                                                title: item.title.clone(),
-                                                album: Some(chan_title.clone()),
-                                                progress: 0,
-                                            };
-                                            player.state.insert_playable(url.clone(), playable);
-                                            Some(url.clone())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                            } else {
-                                None
-                            };
-
-                            if let Err(err) = self.tx.send(Cmd::Queue(url.unwrap())).await {
-                                logln!("{err}");
-                            }
-                        }
-                    }
-
-                    KeyCode::Backspace => {
-                        if let Some((ref mut s, ref mut dirty, _, _)) = self.file_prompt {
-                            s.pop();
-                            *dirty = true;
-                        }
-                    }
-                    KeyCode::Tab => {
-                        if let Some((_, _, ref mut index, cmpl)) = &mut self.file_prompt {
-                            if let Some(ref mut index_inner) = index {
-                                *index_inner += 1;
-                                if *index_inner >= cmpl.len() {
+                            if let Some((ref mut s, ref mut dirty, ref mut index, ref mut cmp)) =
+                                self.file_prompt
+                            {
+                                if let Some(i) = index {
+                                    if let Some(cmp_alt) = cmp.get_mut(*i) {
+                                        std::mem::swap(s, cmp_alt);
+                                    }
                                     *index = None;
                                 }
-                            } else {
-                                *index = Some(0);
+                                s.push(c);
+                                *dirty = true;
                             }
                         }
+                        KeyCode::Esc => {
+                            self.file_prompt = None;
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                }
+                } else if self.prompt.is_some() {
+                    self.search_update(code);
+                } else {
+                    use KeyCode::Char;
+                    match code {
+                        Char('q') => {
+                            self.send_cmd(Cmd::Shutdown).await;
+                        }
+                        Char(' ') => {
+                            self.send_cmd(Cmd::PlayPause).await;
+                        }
+                        Char('h') | Char('H') | KeyCode::Left => {
+                            let cmd = if modifiers.intersects(KeyModifiers::SHIFT) {
+                                Cmd::Prev
+                            } else {
+                                Cmd::SeekRelative(-10)
+                            };
+                            self.send_cmd(cmd).await;
+                        }
+                        Char('l') | Char('L') | KeyCode::Right => {
+                            let cmd = if modifiers.intersects(KeyModifiers::SHIFT) {
+                                Cmd::Next
+                            } else {
+                                Cmd::SeekRelative(10)
+                            };
+                            self.send_cmd(cmd).await
+                        }
+
+                        KeyCode::Char('o') => {
+                            if self.tab_index == 0 || self.tab_index == 2 {
+                                let init = if self.tab_index == 0 {
+                                    String::from("/home/jl")
+                                } else {
+                                    String::new()
+                                };
+
+                                if self.file_prompt.is_none() {
+                                    self.file_prompt = Some((init, true, None, Vec::new()));
+                                } else {
+                                    self.file_prompt = None;
+                                }
+                            } else if self.tab_index == 1 {
+                                self.prompt = Some("".to_string());
+                            }
+                        }
+
+                        KeyCode::Char('d') => {
+                            if self.tab_index == 0 {
+                                let cpos = self.get_cursor_pos();
+                                let recent_size = player.state.recent.len();
+                                let cmd = if cpos < recent_size {
+                                    Cmd::DeleteRecent(recent_size - cpos - 1)
+                                } else {
+                                    Cmd::DeleteQueue(cpos - recent_size)
+                                };
+                                self.tx.send(cmd).await.expect("Failed to send delete");
+                            }
+                        }
+
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            let pos = self.get_cursor_pos();
+                            let bound = self.get_cursor_bound(player);
+                            if pos < bound {
+                                self.cursor_position[self.tab_index] = pos.saturating_add(1);
+                            }
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            self.cursor_position[self.tab_index] =
+                                self.cursor_position[self.tab_index].saturating_sub(1);
+                        }
+
+                        KeyCode::Enter => {
+                            if let Some((s, _, _, _)) = self.file_prompt.take() {
+                                if self.tab_index == 0 {
+                                    let uri = if s.contains("://") {
+                                        s
+                                    } else {
+                                        let mut uri = String::from("file://");
+                                        uri.push_str(&s);
+                                        uri
+                                    };
+                                    if let Err(err) = self.tx.send(Cmd::Queue(uri)).await {
+                                        logln!("{err}");
+                                    }
+                                } else if self.tab_index == 2 {
+                                    if let Err(err) = self.tx.send(Cmd::Subscribe(s)).await {
+                                        logln!("Subscribe error: {err}");
+                                    }
+                                }
+                            } else if self.tab_index == 1 {
+                                let url = if let Ok(eps) = self.episodes.lock() {
+                                    eps.get(self.get_cursor_pos())
+                                        .and_then(|(chan_title, item)| {
+                                            if let Some(url) = item.enclosure().map(|enc| &enc.url)
+                                            {
+                                                let playable = Playable {
+                                                    title: item.title.clone(),
+                                                    album: Some(chan_title.clone()),
+                                                    progress: 0,
+                                                };
+                                                player.state.insert_playable(url.clone(), playable);
+                                                Some(url.clone())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                } else {
+                                    None
+                                };
+
+                                if let Err(err) = self.tx.send(Cmd::Queue(url.unwrap())).await {
+                                    logln!("{err}");
+                                }
+                            }
+                        }
+
+                        KeyCode::Backspace => {
+                            if let Some((ref mut s, ref mut dirty, _, _)) = self.file_prompt {
+                                s.pop();
+                                *dirty = true;
+                            }
+                        }
+                        KeyCode::Tab => {
+                            if let Some((_, _, ref mut index, cmpl)) = &mut self.file_prompt {
+                                if let Some(ref mut index_inner) = index {
+                                    *index_inner += 1;
+                                    if *index_inner >= cmpl.len() {
+                                        *index = None;
+                                    }
+                                } else {
+                                    *index = Some(0);
+                                }
+                            } else {
+                                let new_index = (self.tab_index + 1) % TAB_TITLES.len();
+                                self.tab_index = new_index;
+                            }
+                        }
+
+                        _ => {}
+                    }
+                };
             }
         }
     }
@@ -275,8 +316,6 @@ impl UiState {
 
 #[derive(Debug)]
 pub enum UiUpdate {
-    Tab,
-    BrowseFile,
     KeyEvent(KeyEvent),
 }
 

@@ -14,7 +14,6 @@ pub enum Cmd {
     Shutdown,
     Seek(u64),
     SeekRelative(i64),
-    Quit,
     DeleteQueue(usize),
     DeleteRecent(usize),
     Subscribe(String),

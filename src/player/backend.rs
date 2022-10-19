@@ -14,7 +14,7 @@ use super::{
     Cmd,
 };
 
-pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
+pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender<Cmd> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
     let ui_cmd_tx = tx.clone();
     tokio::spawn(async move {
@@ -36,10 +36,11 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
                 draw_ui(&mut terminal, &mut player, &mut ui_state);
             }
             Some(cmd) = rx.recv() => {
-                // ui_state.log_event(format!("new cmd: {cmd:?}"));
-                if !run_cmd(cmd, &mut player).await {
-                        return
-                }
+                if let Cmd::Shutdown = cmd {
+                    logln!("quitting");
+                    ploop_tx.send(cmd).await.unwrap();
+                    return
+                } else { run_cmd(cmd, &mut player).await};
             }
             msg = bus_stream.next() => {
                 if let Some(msg) = msg {
@@ -56,11 +57,10 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>) -> Sender<Cmd> {
             }
         }
     });
-
     tx
 }
 
-async fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
+async fn run_cmd(cmd: Cmd, player: &mut Player) {
     match cmd {
         Cmd::Play => player.play(),
         Cmd::Pause => player.pause(),
@@ -78,7 +78,7 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
                 feeds.push(x);
             }
         }
-        Cmd::Shutdown | Cmd::Quit => {
+        Cmd::Shutdown => {
             player.update_state();
             if let Some(uri) = &player.current_uri {
                 player.state.queue_front(uri);
@@ -87,7 +87,6 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
             if let Err(err) = player.state.to_disc() {
                 logln!("{err}");
             }
-            return false;
         }
         Cmd::Next => {
             player.update_state();
@@ -106,7 +105,6 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) -> bool {
             log_delete(index, uri);
         }
     }
-    true
 }
 
 fn log_delete(index: usize, uri: Option<String>) {
