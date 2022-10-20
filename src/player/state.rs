@@ -4,7 +4,7 @@ use futures::future::join_all;
 use reqwest::Client;
 use rss::{Channel, Item};
 use serde::{Deserialize, Serialize};
-use std::cmp::{min, Ordering};
+use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::fs::File;
@@ -142,17 +142,33 @@ fn cmp_date(date1: &(&String, &Item), date2: &(&String, &Item)) -> Ordering {
     dates.1.cmp(&dates.0)
 }
 
+#[allow(dead_code)]
+fn debug_item(item: &Item) -> &Item {
+    use std::io::Write;
+    let mut file = File::options()
+        .create(true)
+        .append(true)
+        .open("debug_file")
+        .unwrap();
+    writeln!(&mut file, "comments: {:?}", item.comments).unwrap();
+    writeln!(&mut file, "enclosure: {:?}", item.enclosure).unwrap();
+    writeln!(&mut file, "description: {:?}", item.description).unwrap();
+    writeln!(&mut file, "\n\n\n\n\n").unwrap();
+    item
+}
+
 fn get_recent_episodes(feeds: &[RssFeed]) -> Vec<(String, Item)> {
+    const EP_LIM: usize = 100;
     let mut episodes: Vec<(String, Item)> = feeds
         .iter()
         .filter_map(|feed| {
             if let Some(chan) = &feed.channel {
-                let bound = min(chan.items.len(), 50);
                 let zipped = chan
                     .items
                     .iter()
+                    // .map(debug_item)
                     .map(move |item| (chan.title.clone(), item.clone()));
-                Some(zipped.take(bound))
+                Some(zipped.take(EP_LIM))
             } else {
                 None
             }
@@ -182,7 +198,7 @@ pub fn start_refresh_thread(
     rss_feeds: Arc<Mutex<Vec<RssFeed>>>,
     episodes: Arc<Mutex<Vec<(String, Item)>>>,
 ) {
-    let mut update_interval = time::interval(Duration::from_millis(480_000));
+    let mut update_interval = time::interval(Duration::from_secs(3600));
     tokio::spawn(async move {
         loop {
             update_interval.tick().await;
