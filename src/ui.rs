@@ -22,7 +22,7 @@ use tui::{
     Frame, Terminal,
 };
 
-use crate::player::{Cmd, Player};
+use crate::player::{state::Playable, Cmd, Player};
 const TAB_TITLES: &[&str] = &["Player", "Episodes", "Feeds", "Log"];
 
 use std::io::Write;
@@ -232,32 +232,6 @@ impl UiState {
                                     logln!("Subscribe error: {err}");
                                 }
                             }
-                            // }
-                            /*  else if self.tab_index == 1 { */
-                            /* let url = if let Ok(eps) = self.episodes.lock() { */
-                            /* eps.get(self.get_cursor_pos()) */
-                            /* .and_then(|(chan_title, item)| { */
-                            /* if let Some(url) = item.enclosure().map(|enc| &enc.url) */
-                            /* { */
-                            /* let playable = Playable { */
-                            /* title: item.title.clone(), */
-                            /* album: Some(chan_title.clone()), */
-                            /* progress: 0, */
-                            /* }; */
-                            /* player.state.insert_playable(url.clone(), playable); */
-                            /* Some(url.clone()) */
-                            /* } else { */
-                            /* None */
-                            /* } */
-                            /* }) */
-                            /* } else { */
-                            /* None */
-                            /* }; */
-
-                            /* if let Err(err) = self.tx.send(Cmd::Queue(url.unwrap())).await { */
-                            /* logln!("{err}"); */
-                            /* } */
-                            /* } */
                         }
 
                         _ => {}
@@ -346,6 +320,37 @@ impl UiState {
                             self.tab_index = new_index;
                         }
 
+                        KeyCode::Enter => {
+                            if self.tab_index == 1 {
+                                let info = self.episodes.lock().ok().and_then(|eps| {
+                                    eps.get(self.get_cursor_pos())
+                                        .and_then(|(chan_title, item)| {
+                                            let x = item.enclosure().map(|enclosure| {
+                                                (
+                                                    chan_title.clone(),
+                                                    item.title().map(str::to_string),
+                                                    enclosure.url.clone(),
+                                                )
+                                            });
+                                            x
+                                        })
+                                });
+
+                                if let Some((chan_title, title, url)) = info {
+                                    let url2 = url.clone();
+                                    let playable = Playable {
+                                        title,
+                                        album: Some(chan_title),
+                                        progress: 0,
+                                    };
+                                    player.state.insert_playable(url, playable);
+
+                                    if let Err(err) = self.tx.send(Cmd::Queue(url2)).await {
+                                        logln!("failed to queue: {err}");
+                                    }
+                                };
+                            };
+                        }
                         _ => {}
                     }
                 };
