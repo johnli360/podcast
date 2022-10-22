@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{error::Error, time::Duration};
 use tokio::{
     select,
     sync::mpsc::{Receiver, Sender},
@@ -19,7 +19,13 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
     let ui_cmd_tx = tx.clone();
     tokio::spawn(async move {
         let mut ui_state = UiState::new(ui_cmd_tx);
-        let mut player = Player::new();
+        let mut player = match Player::new() {
+            Ok(player) => player,
+            Err(err) => {
+                logln!("failed to initialize player: {err}");
+                return;
+            }
+        };
         start_refresh_thread(player.state.rss_feeds.clone(), ui_state.episodes.clone());
         let bus = player.playbin.bus().unwrap();
         let mut bus_stream = bus.stream();
@@ -27,7 +33,13 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
 
         let stdout = std::io::stdout();
         let backend = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend).expect("hmm2");
+        let mut terminal = match Terminal::new(backend) {
+            Err(err) => {
+                logln!("failed to initialize terminal: {err}");
+                return;
+            }
+            Ok(t) => t,
+        };
 
         loop {
             select! {
@@ -230,13 +242,11 @@ pub struct Player {
 }
 
 impl Player {
-    fn new() -> Self {
-        let playbin = gst::ElementFactory::make("playbin", Some("playbin"))
-            .expect("Failed to create playbin element");
+    fn new() -> Result<Self, Box<dyn Error>> {
+        let playbin = gst::ElementFactory::make("playbin", Some("playbin"))?;
+        let state = State::from_disc()?;
 
-        let state = State::from_disc().expect("failed to read state");
-
-        Player {
+        Ok(Player {
             play_state: gst::State::Null,
             state,
             pending_seek: None,
@@ -245,7 +255,7 @@ impl Player {
             seek_enabled: false,
             duration: gst::ClockTime::NONE,
             current_uri: None,
-        }
+        })
     }
 
     fn set_uri(&mut self, uri: &str) {
@@ -338,17 +348,17 @@ impl Player {
 
     fn pause(&mut self) {
         if self.playing {
-            self.playbin
-                .set_state(gst::State::Paused)
-                .expect("Unable to set the pipeline to the `Paused` state");
+            if let Err(err) = self.playbin.set_state(gst::State::Paused) {
+                logln!("Failed to set pipeline state to `Paused`: {err}");
+            }
             self.update_state();
         }
     }
 
     fn set_null(&mut self) {
-        self.playbin
-            .set_state(gst::State::Null)
-            .expect("Unable to set the pipeline to the `Null` state");
+        if let Err(err) = self.playbin.set_state(gst::State::Null) {
+            logln!("Failed to set pipeline state to `Null`: {err}");
+        }
     }
 
     fn seek(&mut self, pos: u64) {

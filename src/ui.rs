@@ -317,7 +317,9 @@ impl UiState {
                                 } else {
                                     Cmd::DeleteQueue(cpos - recent_size)
                                 };
-                                self.tx.send(cmd).await.expect("Failed to send delete");
+                                if let Err(err) = self.tx.send(cmd).await {
+                                    logln!("Failed to send delete: {err}");
+                                }
                             }
                         }
 
@@ -491,7 +493,6 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
             let input = Paragraph::new(format!(": {}", search.as_str())).style(Style::default());
             f.render_widget(input, chunks[2]);
         };
-        // .block(Block::default().borders(Borders::ALL).title("Search"));
     }
 }
 
@@ -689,13 +690,11 @@ fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, 
     let playlist = Table::new(playlist)
         .block(Block::default().borders(Borders::ALL).title("Episodes"))
         .header(
-            Row::new(vec!["i", "Channel Title", "Title"]).style(Style::default().fg(Color::Yellow)), // .bottom_margin(1),
+            Row::new(vec!["i", "Channel Title", "Title"]).style(Style::default().fg(Color::Yellow)),
         )
         .widths(&constraints)
         .column_spacing(1);
 
-    // let playlist =
-    // List::new(playlist).block(Block::default().borders(Borders::ALL).title("Playlist"));
     f.render_widget(playlist, chunk);
 }
 
@@ -761,7 +760,7 @@ fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>) {
         .split(f.size());
 
     if let Ok(log) = unsafe { LOG.lock() } {
-        let log = log.as_ref().expect("");
+        let log = log.as_ref().expect("log uninitialised");
         let events: Vec<ListItem> = log
             .iter()
             .enumerate()
