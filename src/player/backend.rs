@@ -51,6 +51,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
                 if let Cmd::Shutdown = cmd {
                     logln!("quitting");
                     ploop_tx.send(cmd).await.unwrap();
+                    run_cmd(Cmd::Shutdown, &mut player).await;
                     return
                 } else { run_cmd(cmd, &mut player).await};
             }
@@ -332,6 +333,8 @@ impl Player {
     fn update_state(&mut self) {
         if let Some(uri) = &self.current_uri {
             if let Some(pos) = self.query_position().map(ClockTime::seconds) {
+                let pos = pos + self.pending_seek.unwrap_or(0);
+                logln!("updating: {uri} to {pos}");
                 if let Some(playable) = self.state.uris.get_mut(uri) {
                     playable.progress = pos;
                 } else {
