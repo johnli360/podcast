@@ -111,21 +111,25 @@ impl UiState {
     }
 
     fn get_cursor_bound(&self, player: &Player) -> usize {
-        match self.tab_index {
-            0 => player.state.recent.len() + player.state.queue.len() - 1,
+        let bound = match self.tab_index {
+            0 => player.state.recent.len() + player.state.queue.len(),
             // 1 => EPISODES (lots, no point in calculating max?).
-            2 => {
-                player
-                    .state
-                    .rss_feeds
-                    .lock()
-                    .map(|v| v.len())
-                    .unwrap_or(usize::MAX)
-                    - 1
-            }
-            // 3 => LOG
+            2 => player
+                .state
+                .rss_feeds
+                .lock()
+                .map(|v| v.len())
+                .unwrap_or(usize::MAX),
+            3 => unsafe {
+                if let Ok(guard) = LOG.lock() {
+                    guard.as_ref().map(|log| log.len()).unwrap_or(usize::MAX)
+                } else {
+                    usize::MAX
+                }
+            },
             _ => usize::MAX,
-        }
+        };
+        bound - 1
     }
 
     fn search_update(&mut self, code: KeyCode) {
@@ -389,7 +393,7 @@ pub fn draw_ui(
             0 => draw_player_tab(f, player, ui_state),
             1 => draw_episodes_tab(f, ui_state),
             2 => draw_feed_tab(f, player, ui_state),
-            3 => draw_event_log_tab(f),
+            3 => draw_event_log_tab(f, ui_state),
             _ => (),
         }
     });
@@ -757,7 +761,7 @@ const fn state_to_str(state: State) -> &'static str {
     }
 }
 
-fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>) {
+fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -766,12 +770,20 @@ fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>) {
 
     if let Ok(log) = unsafe { LOG.lock() } {
         let log = log.as_ref().expect("log uninitialised");
+        let half_height = (chunks[1].height - 2) / 2;
+        let skip = ui_state.get_cursor_pos().saturating_sub(half_height.into());
         let events: Vec<ListItem> = log
             .iter()
             .enumerate()
+            .skip(skip)
             .map(|(i, m)| {
                 let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
-                ListItem::new(content)
+                let item = ListItem::new(content);
+                if ui_state.get_cursor_pos() == i {
+                    item.style(Style::default().fg(Color::Black).bg(Color::White))
+                } else {
+                    item
+                }
             })
             .collect();
         let events = List::new(events).block(Block::default().borders(Borders::ALL).title("Log"));

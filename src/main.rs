@@ -21,7 +21,7 @@ use std::sync::Mutex;
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
     unsafe {
-        let msgs = VecDeque::with_capacity(50);
+        let msgs = VecDeque::with_capacity(200);
         podaemon::ui::LOG = Mutex::new(Some(msgs));
     }
     // console_subscriber::init();
