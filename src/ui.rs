@@ -160,88 +160,94 @@ impl UiState {
         }
     }
 
+    async fn file_prompt_update(&mut self, code: KeyCode) {
+        if let Some((ref mut s, ref mut dirty, ref mut index, ref mut cmp)) = self.file_prompt {
+            match code {
+                KeyCode::Char(c) => {
+                    if let Some(i) = index {
+                        if let Some(cmp_alt) = cmp.get_mut(*i) {
+                            std::mem::swap(s, cmp_alt);
+                        }
+                        *index = None;
+                    }
+                    s.push(c);
+                    *dirty = true;
+                }
+                KeyCode::Esc => {
+                    self.file_prompt = None;
+                }
+                KeyCode::Backspace => {
+                    if let Some(i) = index {
+                        if let Some(cmp_alt) = cmp.get_mut(*i) {
+                            std::mem::swap(s, cmp_alt);
+                        }
+                        *index = None;
+                    }
+
+                    s.pop();
+                    *dirty = true;
+                }
+                KeyCode::Tab => {
+                    if let Some((_, _, ref mut index, cmpl)) = &mut self.file_prompt {
+                        if let Some(ref mut index_inner) = index {
+                            *index_inner += 1;
+                            if *index_inner >= cmpl.len() {
+                                *index = None;
+                            }
+                        } else {
+                            *index = Some(0);
+                        }
+                    }
+                }
+
+                KeyCode::Enter => {
+                    if self.tab_index == 0 {
+                        if let Some(i) = index {
+                            if let Some(cmp_alt) = cmp.get_mut(*i) {
+                                std::mem::swap(s, cmp_alt);
+                            };
+                        };
+
+                        if !s.contains("://") {
+                            let mut uri = String::from("file://");
+                            uri.push_str(&s);
+                            mem::swap(s, &mut uri);
+                        };
+                        if let Err(err) = self
+                            .tx
+                            .send(Cmd::Queue(mem::replace(s, "".to_string())))
+                            .await
+                        {
+                            logln!("{err}");
+                        }
+                        self.file_prompt = None;
+                    } else if self.tab_index == 2 {
+                        if let Err(err) = self
+                            .tx
+                            .send(Cmd::Subscribe(mem::replace(s, "".to_string())))
+                            .await
+                        {
+                            logln!("Subscribe error: {err}");
+                        }
+                    }
+                }
+
+                _ => {}
+            }
+        }
+    }
+
     pub async fn update(&mut self, event: UiUpdate, player: &mut Player) {
         match event {
             UiUpdate::KeyEvent(KeyEvent {
                 code, modifiers, ..
             }) => {
-                if let Some((ref mut s, ref mut dirty, ref mut index, ref mut cmp)) =
-                    self.file_prompt
-                {
-                    match code {
-                        KeyCode::Char(c) => {
-                            if let Some(i) = index {
-                                if let Some(cmp_alt) = cmp.get_mut(*i) {
-                                    std::mem::swap(s, cmp_alt);
-                                }
-                                *index = None;
-                            }
-                            s.push(c);
-                            *dirty = true;
-                        }
-                        KeyCode::Esc => {
-                            self.file_prompt = None;
-                        }
-                        KeyCode::Backspace => {
-                            if let Some(i) = index {
-                                if let Some(cmp_alt) = cmp.get_mut(*i) {
-                                    std::mem::swap(s, cmp_alt);
-                                }
-                                *index = None;
-                            }
-
-                            s.pop();
-                            *dirty = true;
-                        }
-                        KeyCode::Tab => {
-                            if let Some((_, _, ref mut index, cmpl)) = &mut self.file_prompt {
-                                if let Some(ref mut index_inner) = index {
-                                    *index_inner += 1;
-                                    if *index_inner >= cmpl.len() {
-                                        *index = None;
-                                    }
-                                } else {
-                                    *index = Some(0);
-                                }
-                            }
-                        }
-
-                        KeyCode::Enter => {
-                            if self.tab_index == 0 {
-                                if let Some(i) = index {
-                                    if let Some(cmp_alt) = cmp.get_mut(*i) {
-                                        std::mem::swap(s, cmp_alt);
-                                    };
-                                };
-
-                                if !s.contains("://") {
-                                    let mut uri = String::from("file://");
-                                    uri.push_str(&s);
-                                    mem::swap(s, &mut uri);
-                                };
-                                if let Err(err) = self
-                                    .tx
-                                    .send(Cmd::Queue(mem::replace(s, "".to_string())))
-                                    .await
-                                {
-                                    logln!("{err}");
-                                }
-                                self.file_prompt = None;
-                            } else if self.tab_index == 2 {
-                                if let Err(err) = self
-                                    .tx
-                                    .send(Cmd::Subscribe(mem::replace(s, "".to_string())))
-                                    .await
-                                {
-                                    logln!("Subscribe error: {err}");
-                                }
-                            }
-                        }
-
-                        _ => {}
-                    }
+                if self.file_prompt.is_some() {
+                    self.file_prompt_update(code).await;
+                    return;
                 } else if self.prompt.is_some() {
                     self.search_update(code);
+                    return;
                 } else {
                     use KeyCode::Char;
                     match code {
@@ -282,6 +288,12 @@ impl UiState {
                                     self.file_prompt = None;
                                 }
                             } else if self.tab_index == 1 {
+                                self.prompt = Some("".to_string());
+                            }
+                        }
+
+                        KeyCode::Char('/') => {
+                            if self.tab_index == 1 {
                                 self.prompt = Some("".to_string());
                             }
                         }
