@@ -57,6 +57,7 @@ pub struct UiState {
     file_prompt: Option<(String, bool, Option<usize>, Vec<String>)>,
     prompt: Option<String>,
     hit_number: isize,
+    key_hist: Vec<KeyEvent>,
     pub episodes: Arc<Mutex<Vec<(String, Item)>>>,
     tx: Sender<Cmd>,
 }
@@ -74,6 +75,7 @@ impl UiState {
             cursor_position: [0; TAB_TITLES.len()],
             file_prompt: None,
             prompt: None,
+            key_hist: Vec::new(),
             episodes: Arc::new(Mutex::new(Vec::new())),
             tx,
         }
@@ -114,6 +116,13 @@ impl UiState {
         let bound = match self.tab_index {
             0 => player.state.recent.len() + player.state.queue.len(),
             // 1 => EPISODES (lots, no point in calculating max?).
+            1 => {
+                if let Ok(eps) = self.episodes.lock() {
+                    eps.len()
+                } else {
+                    usize::MAX
+                }
+            }
             2 => player
                 .state
                 .rss_feeds
@@ -239,9 +248,11 @@ impl UiState {
 
     pub async fn update(&mut self, event: UiUpdate, player: &mut Player) {
         match event {
-            UiUpdate::KeyEvent(KeyEvent {
-                code, modifiers, ..
-            }) => {
+            UiUpdate::KeyEvent(
+                event @ KeyEvent {
+                    code, modifiers, ..
+                },
+            ) => {
                 if self.file_prompt.is_some() {
                     self.file_prompt_update(code).await;
                     return;
@@ -251,6 +262,20 @@ impl UiState {
                 } else {
                     use KeyCode::Char;
                     match code {
+                        Char('G') => {
+                            let bound = self.get_cursor_bound(player);
+                            self.cursor_position[self.tab_index] = bound;
+                        }
+                        Char('g') => {
+                            if let Some(KeyEvent { code, .. }) = self.key_hist.last() {
+                                if let KeyCode::Char('g') = code {
+                                    self.cursor_position[self.tab_index] = 0;
+                                    self.key_hist.clear();
+                                }
+                            } else {
+                                self.key_hist.push(event);
+                            }
+                        }
                         Char('q') => {
                             self.send_cmd(Cmd::Shutdown).await;
                         }
