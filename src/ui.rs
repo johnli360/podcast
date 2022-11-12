@@ -1,5 +1,6 @@
 use super::dir::children;
 use std::{
+    cmp,
     collections::VecDeque,
     fs::File,
     io::Stdout,
@@ -57,6 +58,7 @@ pub struct UiState {
     file_prompt: Option<(String, bool, Option<usize>, Vec<String>)>,
     prompt: Option<String>,
     hit_number: isize,
+    vscroll: u16,
     key_hist: Vec<KeyEvent>,
     pub episodes: Arc<Mutex<Vec<(String, Item)>>>,
     tx: Sender<Cmd>,
@@ -75,6 +77,7 @@ impl UiState {
             cursor_position: [0; TAB_TITLES.len()],
             file_prompt: None,
             prompt: None,
+            vscroll: 0,
             key_hist: Vec::new(),
             episodes: Arc::new(Mutex::new(Vec::new())),
             tx,
@@ -115,7 +118,6 @@ impl UiState {
     fn get_cursor_bound(&self, player: &Player) -> usize {
         let bound = match self.tab_index {
             0 => player.state.recent.len() + player.state.queue.len(),
-            // 1 => EPISODES (lots, no point in calculating max?).
             1 => {
                 if let Ok(eps) = self.episodes.lock() {
                     eps.len()
@@ -324,17 +326,32 @@ impl UiState {
                         }
 
                         KeyCode::Char('d') => {
-                            if self.tab_index == 0 {
-                                let cpos = self.get_cursor_pos();
-                                let recent_size = player.state.recent.len();
-                                let cmd = if cpos < recent_size {
-                                    Cmd::DeleteRecent(recent_size - cpos - 1)
-                                } else {
-                                    Cmd::DeleteQueue(cpos - recent_size)
-                                };
-                                if let Err(err) = self.tx.send(cmd).await {
-                                    logln!("Failed to send delete: {err}");
+                            if KeyModifiers::CONTROL == modifiers {
+                                let new = cmp::min(
+                                    self.get_cursor_bound(player),
+                                    self.vscroll as usize + self.get_cursor_pos(),
+                                );
+                                self.cursor_position[self.tab_index] = new;
+                            } else {
+                                if self.tab_index == 0 {
+                                    let cpos = self.get_cursor_pos();
+                                    let recent_size = player.state.recent.len();
+                                    let cmd = if cpos < recent_size {
+                                        Cmd::DeleteRecent(recent_size - cpos - 1)
+                                    } else {
+                                        Cmd::DeleteQueue(cpos - recent_size)
+                                    };
+                                    if let Err(err) = self.tx.send(cmd).await {
+                                        logln!("Failed to send delete: {err}");
+                                    }
                                 }
+                            }
+                        }
+
+                        Char('u') => {
+                            if KeyModifiers::CONTROL == modifiers {
+                                self.cursor_position[self.tab_index] =
+                                    self.get_cursor_pos().saturating_sub(self.vscroll as usize);
                             }
                         }
 
@@ -487,6 +504,8 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
         .split(f.size());
 
     let tbl_height = chunks[1].height;
+    //                                 2 for border, 1 for header
+    ui_state.vscroll = tbl_height.saturating_sub(2 + 1);
     let half_height = (tbl_height - 2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
 
@@ -555,6 +574,7 @@ fn draw_feed_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut U
             .as_ref(),
         )
         .split(f.size());
+    ui_state.vscroll = chunks[1].height.saturating_sub(2);
     let half_height = (chunks[1].height - 2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
 
@@ -687,9 +707,14 @@ fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut Ui
     }
 }
 
-fn draw_playlist<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, player: &Player) {
-    //                - 2 for border
-    // let uri_map = player.state.uris;
+fn draw_playlist<B: Backend>(
+    f: &mut Frame<B>,
+    chunk: Rect,
+    ui_state: &mut UiState,
+    player: &Player,
+) {
+    //                                   2 for border, 1 for header
+    ui_state.vscroll = chunk.height.saturating_sub(2 + 1);
     let half_height = (chunk.height - 2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
     let playlist: Vec<Row> = player
@@ -798,17 +823,22 @@ const fn state_to_str(state: State) -> &'static str {
     }
 }
 
-fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &UiState) {
+fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
         .constraints([Constraint::Length(2), Constraint::Min(2)].as_ref())
         .split(f.size());
+    ui_state.vscroll = chunks[1].height.saturating_sub(2);
 
     if let Ok(log) = unsafe { LOG.lock() } {
         let log = log.as_ref().expect("log uninitialised");
-        let half_height = (chunks[1].height - 2) / 2;
-        let skip = ui_state.get_cursor_pos().saturating_sub(half_height.into());
+        let offset = (chunks[1].height - 2).saturating_sub(log.len() as u16);
+        let half_height = ((chunks[1].height - 2) / 2) as usize;
+        let skip = ui_state
+            .get_cursor_pos()
+            .saturating_sub(half_height.into())
+            .saturating_sub(offset.into());
         let events: Vec<ListItem> = log
             .iter()
             .enumerate()
