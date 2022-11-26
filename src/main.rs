@@ -36,7 +36,7 @@ async fn main() -> Result<(), std::io::Error> {
 
     if let Ok(port) = env::var("PORT") {
         {
-            let addr = format!("192.168.10.3:{port}");
+            let addr = format!("192.168.10.109:{port}");
             tokio::spawn(async move {
                 listen(tx, &addr).await;
             });
