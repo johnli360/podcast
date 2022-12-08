@@ -1,4 +1,7 @@
-use std::{error::Error, time::Duration};
+use std::{
+    error::Error,
+    time::Duration,
+};
 use tokio::{
     select,
     sync::mpsc::{Receiver, Sender},
@@ -7,7 +10,10 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tui::{backend::CrosstermBackend, Terminal};
 
-use crate::ui::{draw_ui, UiState, UiUpdate, _log};
+use crate::{
+    player::state::get_time,
+    ui::{draw_ui, UiState, UiUpdate, _log},
+};
 
 use super::{
     state::{start_refresh_thread, Playable, RssFeed, State},
@@ -116,6 +122,15 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) {
         Cmd::DeleteRecent(index) => {
             let uri = player.state.recent.remove(index);
             log_delete(index, uri);
+        }
+        Cmd::Update(args) => {
+            let uri = args.0;
+            logln!(
+                "received cmd to upadte {uri} to {} @ {}",
+                args.1.progress.0,
+                args.1.progress.1
+            );
+            player.state.update_playable(uri, args.1);
         }
     }
 }
@@ -335,13 +350,15 @@ impl Player {
             if let Some(pos) = self.query_position().map(ClockTime::seconds) {
                 let pos = pos + self.pending_seek.unwrap_or(0);
                 logln!("updating: {uri} to {pos}");
+                let t = get_time();
+
                 if let Some(playable) = self.state.uris.get_mut(uri) {
-                    playable.progress = pos;
+                    playable.progress = (t, pos);
                 } else {
                     let playable = Playable {
                         title: None,
                         album: None,
-                        progress: pos,
+                        progress: (t, pos),
                     };
                     self.state.insert_playable(uri.to_string(), playable);
                 };

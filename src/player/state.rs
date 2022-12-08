@@ -10,16 +10,16 @@ use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
 
 const FILE: &str = "state";
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Playable {
     pub title: Option<String>,
     pub album: Option<String>,
-    pub progress: u64,
+    pub progress: (u64, u64),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -45,6 +45,16 @@ impl RssFeed {
     }
 }
 
+pub fn get_time() -> u64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Err(err) => {
+            logln!("failed to get time: {err}");
+            0
+        }
+        Ok(t) => t.as_secs(),
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct State {
     #[serde(default = "new_rss_feeds")]
@@ -66,8 +76,8 @@ fn new_recent() -> VecDeque<String> {
 }
 
 impl State {
-    pub fn from_disc() -> Result<Self, Box<dyn Error>> {
-        let mut state = if let Ok(file) = File::open(FILE) {
+    pub fn from_disc2(file: &str) -> Result<Self, Box<dyn Error>> {
+        let mut state = if let Ok(file) = File::open(file) {
             let reader = BufReader::new(file);
             serde_json::from_reader(reader)?
         } else {
@@ -82,6 +92,10 @@ impl State {
         Ok(state)
     }
 
+    pub fn from_disc() -> Result<Self, Box<dyn Error>> {
+        Self::from_disc2(FILE)
+    }
+
     pub fn to_disc(&self) -> Result<(), Box<dyn Error>> {
         let file = File::create(FILE)?;
         let writer = BufWriter::new(file);
@@ -89,9 +103,40 @@ impl State {
         Ok(())
     }
 
-    // pub fn insert_playable(&mut self, uri: String, progress: u64) {
     pub fn insert_playable(&mut self, uri: String, playable: Playable) {
         self.uris.insert(uri, playable);
+    }
+
+    pub fn update_playable(
+        &mut self,
+        uri: String,
+        new @ Playable {
+            title: _,
+            album: _,
+            progress: (new_time, _new_progress),
+        }: Playable,
+    ) {
+        match self.uris.get(&uri) {
+            Some(Playable {
+                title,
+                album,
+                progress: (old_time, _progress),
+            }) => {
+                if new_time > *old_time {
+                    self.uris.insert(
+                        uri,
+                        Playable {
+                            title: title.clone(),
+                            album: album.clone(),
+                            progress: new.progress,
+                        },
+                    );
+                }
+            }
+            None => {
+                self.uris.insert(uri, new);
+            }
+        }
     }
 
     pub fn reset_pos(&mut self, uri: &str) {
@@ -122,7 +167,7 @@ impl State {
     }
 
     pub fn get_pos(&self, uri: &str) -> Option<u64> {
-        self.uris.get(uri).map(|p| p.progress)
+        self.uris.get(uri).map(|p| p.progress.1)
     }
 }
 
