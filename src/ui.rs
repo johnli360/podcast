@@ -23,7 +23,10 @@ use tui::{
     Frame, Terminal,
 };
 
-use crate::player::{state::Playable, Cmd, Player};
+use crate::player::{
+    state::{get_time, Playable},
+    Cmd, Player,
+};
 const TAB_TITLES: &[&str] = &["Player", "Episodes", "Feeds", "Log"];
 
 use std::io::Write;
@@ -221,14 +224,10 @@ impl UiState {
 
                         if !s.contains("://") {
                             let mut uri = String::from("file://");
-                            uri.push_str(&s);
+                            uri.push_str(s);
                             mem::swap(s, &mut uri);
                         };
-                        if let Err(err) = self
-                            .tx
-                            .send(Cmd::Queue(mem::replace(s, "".to_string())))
-                            .await
-                        {
+                        if let Err(err) = self.tx.send(Cmd::Queue(mem::take(s))).await {
                             logln!("{err}");
                         }
                         self.file_prompt = None;
@@ -257,10 +256,8 @@ impl UiState {
             ) => {
                 if self.file_prompt.is_some() {
                     self.file_prompt_update(code).await;
-                    return;
                 } else if self.prompt.is_some() {
                     self.search_update(code);
-                    return;
                 } else {
                     use KeyCode::Char;
                     match code {
@@ -332,18 +329,16 @@ impl UiState {
                                     self.vscroll as usize + self.get_cursor_pos(),
                                 );
                                 self.cursor_position[self.tab_index] = new;
-                            } else {
-                                if self.tab_index == 0 {
-                                    let cpos = self.get_cursor_pos();
-                                    let recent_size = player.state.recent.len();
-                                    let cmd = if cpos < recent_size {
-                                        Cmd::DeleteRecent(recent_size - cpos - 1)
-                                    } else {
-                                        Cmd::DeleteQueue(cpos - recent_size)
-                                    };
-                                    if let Err(err) = self.tx.send(cmd).await {
-                                        logln!("Failed to send delete: {err}");
-                                    }
+                            } else if self.tab_index == 0 {
+                                let cpos = self.get_cursor_pos();
+                                let recent_size = player.state.recent.len();
+                                let cmd = if cpos < recent_size {
+                                    Cmd::DeleteRecent(recent_size - cpos - 1)
+                                } else {
+                                    Cmd::DeleteQueue(cpos - recent_size)
+                                };
+                                if let Err(err) = self.tx.send(cmd).await {
+                                    logln!("Failed to send delete: {err}");
                                 }
                             }
                         }
@@ -396,10 +391,13 @@ impl UiState {
 
                                 if let Some((chan_title, title, url)) = info {
                                     let url2 = url.clone();
+                                    let pos = player.state.uris.get(&url2);
                                     let playable = Playable {
                                         title,
                                         album: Some(chan_title),
-                                        progress: 0,
+                                        progress: pos
+                                            .map(|x| x.progress)
+                                            .unwrap_or((get_time(), 0)),
                                     };
                                     player.state.insert_playable(url, playable);
 
@@ -526,7 +524,7 @@ fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
 
                 let item = Row::new(vec![
                     Cell::from(i.to_string()),
-                    Cell::from(x.unwrap_or("".to_string())),
+                    Cell::from(x.unwrap_or_default()),
                     Cell::from(chan_title.to_string()),
                     Cell::from(title.to_string()),
                 ]);
@@ -837,7 +835,7 @@ fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
         let half_height = ((chunks[1].height - 2) / 2) as usize;
         let skip = ui_state
             .get_cursor_pos()
-            .saturating_sub(half_height.into())
+            .saturating_sub(half_height)
             .saturating_sub(offset.into());
         let events: Vec<ListItem> = log
             .iter()
