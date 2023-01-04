@@ -47,6 +47,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
             Ok(t) => t,
         };
 
+        let mut tick_count : u32 = 0;
         loop {
             select! {
             Some(ui_update) = ui_rx.recv() => {
@@ -71,6 +72,15 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
                     player.duration = player.playbin.query_duration();
                 }
                 draw_ui(&mut terminal, &mut player, &mut ui_state);
+                tick_count += 1;
+                // 100 ms * 1200 = 120 seconds
+                if tick_count >= 1200 {
+                    tick_count = 0;
+                    player.update_state();
+                    if let Err(err) = player.state.to_disc() {
+                        logln!("error while saving state: {err}");
+                    }
+                }
 
             }
             }
