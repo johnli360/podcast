@@ -715,7 +715,7 @@ fn draw_playlist<B: Backend>(
 ) {
     //                                   2 for border, 1 for header
     ui_state.vscroll = chunk.height.saturating_sub(2 + 1);
-    let half_height = (chunk.height - 2) / 2;
+    let half_height = chunk.height.saturating_sub(2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
     let playlist: Vec<Row> = player
         .state
