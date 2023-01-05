@@ -358,7 +358,10 @@ impl Player {
     fn update_state(&mut self) {
         if let Some(uri) = &self.current_uri {
             if let Some(pos) = self.query_position().map(ClockTime::seconds) {
-                let pos = pos + self.pending_seek.unwrap_or(0);
+                if self.pending_seek.is_some() {
+                    // if we have pending seek then there is no need to update
+                    return;
+                }
                 logln!("updating: {uri} to {pos}");
                 let t = get_time();
 
