@@ -368,6 +368,7 @@ impl Player {
                     let playable = Playable {
                         title: None,
                         album: None,
+                        source: None,
                         progress: (t, pos),
                     };
                     self.state.insert_playable(uri.to_string(), playable);

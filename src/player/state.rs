@@ -17,6 +17,7 @@ const FILE: &str = "state";
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct Playable {
+    pub source: Option<String>,
     pub title: Option<String>,
     pub album: Option<String>,
     pub progress: (u64, u64),
@@ -114,18 +115,21 @@ impl State {
             title: _,
             album: _,
             progress: (new_time, _new_progress),
+            source : _,
         }: Playable,
     ) {
         match self.uris.get(&uri) {
             Some(Playable {
                 title,
                 album,
+                source,
                 progress: (old_time, _progress),
             }) => {
                 if new_time > *old_time {
                     self.uris.insert(
                         uri,
                         Playable {
+                            source: source.clone(),
                             title: title.clone(),
                             album: album.clone(),
                             progress: new.progress,

@@ -383,13 +383,14 @@ impl UiState {
                                                     chan_title.clone(),
                                                     item.title().map(str::to_string),
                                                     enclosure.url.clone(),
+                                                    item.source.clone().map(|s| s.url),
                                                 )
                                             });
                                             x
                                         })
                                 });
 
-                                if let Some((chan_title, title, url)) = info {
+                                if let Some((chan_title, title, url, source)) = info {
                                     let url2 = url.clone();
                                     let pos = player.state.uris.get(&url2);
                                     let playable = Playable {
@@ -398,6 +399,7 @@ impl UiState {
                                         progress: pos
                                             .map(|x| x.progress)
                                             .unwrap_or((get_time(), 0)),
+                                            source,
                                     };
                                     player.state.insert_playable(url, playable);
 

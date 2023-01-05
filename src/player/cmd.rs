@@ -31,6 +31,7 @@ impl Default for UpdateArgs {
             Playable {
                 title: None,
                 album: None,
+                source : None,
                 progress: (0, 0),
             },
         )
@@ -44,6 +45,7 @@ impl UpdateArgs {
             Playable {
                 title: _,
                 album: _,
+                source: _,
                 progress: (t, p),
             },
         ) = self;
@@ -60,6 +62,7 @@ impl UpdateArgs {
             Playable {
                 title: None,
                 album: None,
+                source: None,
                 progress: (time, progress),
             },
         ))
