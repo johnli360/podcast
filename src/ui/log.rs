@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fs::File, io::Write, sync::Mutex, fmt};
+use std::{collections::VecDeque, fmt, fs::File, io::Write, sync::Mutex};
 
 use tui::{
     backend::Backend,

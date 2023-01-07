@@ -4,8 +4,8 @@ use std::io::Read;
 use std::net::*;
 use std::str;
 
-pub mod player;
 pub mod dir;
+pub mod player;
 
 #[macro_use]
 pub mod ui;

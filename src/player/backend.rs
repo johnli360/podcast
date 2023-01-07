@@ -1,8 +1,5 @@
 use crate::logln;
-use std::{
-    error::Error,
-    time::Duration,
-};
+use std::{error::Error, time::Duration};
 use tokio::{
     select,
     sync::mpsc::{Receiver, Sender},
@@ -13,7 +10,7 @@ use tui::{backend::CrosstermBackend, Terminal};
 
 use crate::{
     player::state::get_time,
-    ui::ui::{draw_ui, UiState, UiUpdate, },
+    ui::ui::{draw_ui, UiState, UiUpdate},
 };
 
 use super::{
@@ -48,7 +45,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
             Ok(t) => t,
         };
 
-        let mut tick_count : u32 = 0;
+        let mut tick_count: u32 = 0;
         loop {
             select! {
             Some(ui_update) = ui_rx.recv() => {

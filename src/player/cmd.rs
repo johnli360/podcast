@@ -31,7 +31,7 @@ impl Default for UpdateArgs {
             Playable {
                 title: None,
                 album: None,
-                source : None,
+                source: None,
                 progress: (0, 0),
             },
         )
@@ -90,9 +90,7 @@ fn parse_cmd_arg(buf: &str) -> Option<Cmd> {
             "queue" => return Some(Cmd::Queue(arg.into())),
             "seek" => return arg.parse().ok().map(Cmd::Seek),
             "seek_relative" => return arg.parse().ok().map(Cmd::SeekRelative),
-            "update" => {
-                return UpdateArgs::parse(arg).map(Cmd::Update)
-            },
+            "update" => return UpdateArgs::parse(arg).map(Cmd::Update),
             _ => {}
         }
     }

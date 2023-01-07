@@ -7,4 +7,3 @@ macro_rules! logln {
         $crate::ui::log::_log(format_args!($($arg)*));
     })
 }
-

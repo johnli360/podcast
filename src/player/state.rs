@@ -115,7 +115,7 @@ impl State {
             title: _,
             album: _,
             progress: (new_time, _new_progress),
-            source : _,
+            source: _,
         }: Playable,
     ) {
         match self.uris.get(&uri) {

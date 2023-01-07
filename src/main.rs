@@ -1,5 +1,3 @@
-
-
 use crossterm::event::{read, Event, KeyEvent};
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal};
@@ -19,7 +17,6 @@ use std::collections::VecDeque;
 use std::env;
 use std::io::stdout;
 use std::sync::Mutex;
-
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
