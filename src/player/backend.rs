@@ -1,3 +1,4 @@
+use crate::logln;
 use std::{
     error::Error,
     time::Duration,
@@ -12,7 +13,7 @@ use tui::{backend::CrosstermBackend, Terminal};
 
 use crate::{
     player::state::get_time,
-    ui::{draw_ui, UiState, UiUpdate, _log},
+    ui::ui::{draw_ui, UiState, UiUpdate, },
 };
 
 use super::{

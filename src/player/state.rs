@@ -1,4 +1,4 @@
-use crate::ui::_log;
+use crate::logln;
 use chrono::DateTime;
 use futures::future::join_all;
 use reqwest::Client;

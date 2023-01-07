@@ -4,11 +4,10 @@ use std::io::Read;
 use std::net::*;
 use std::str;
 
-#[macro_use]
-mod macros;
-
-pub mod dir;
 pub mod player;
+pub mod dir;
+
+#[macro_use]
 pub mod ui;
 
 pub fn read_lines(stream: TcpStream) -> Vec<String> {

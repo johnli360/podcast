@@ -1,4 +1,4 @@
-use crate::ui::_log;
+use crate::logln;
 use strum_macros::EnumString;
 use strum_macros::{AsStaticStr, Display};
 

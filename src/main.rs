@@ -1,13 +1,15 @@
+
+
 use crossterm::event::{read, Event, KeyEvent};
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal};
 
-#[macro_use]
-mod macros;
+// #[macro_use]
+// mod macros;
 
+use podaemon::logln;
 use podaemon::player::{self, Cmd};
-use podaemon::ui::UiUpdate;
-use podaemon::ui::_log;
+use podaemon::ui::ui::UiUpdate;
 // use rss::Channel;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
@@ -18,11 +20,12 @@ use std::env;
 use std::io::stdout;
 use std::sync::Mutex;
 
+
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
     unsafe {
         let msgs = VecDeque::with_capacity(200);
-        podaemon::ui::LOG = Mutex::new(Some(msgs));
+        podaemon::ui::log::LOG = Mutex::new(Some(msgs));
     }
     // console_subscriber::init();
     logln!("init");
