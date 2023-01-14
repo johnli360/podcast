@@ -75,7 +75,7 @@ pub fn parse_cmd(buf: &str) -> Option<Cmd> {
     } else if let cmd @ Some(_) = parse_cmd_arg(buf) {
         cmd
     } else {
-        logln!("parse failed");
+        logln!("parse failed: {buf}");
         None
     }
 }
@@ -90,6 +90,7 @@ fn parse_cmd_arg(buf: &str) -> Option<Cmd> {
             "queue" => return Some(Cmd::Queue(arg.into())),
             "seek" => return arg.parse().ok().map(Cmd::Seek),
             "seek_relative" => return arg.parse().ok().map(Cmd::SeekRelative),
+            "subscribe" => return arg.parse().ok().map(Cmd::Subscribe),
             "update" => return UpdateArgs::parse(arg).map(Cmd::Update),
             _ => {}
         }
