@@ -74,9 +74,11 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
                 // 100 ms * 1200 = 120 seconds
                 if tick_count >= 1200 {
                     tick_count = 0;
-                    player.update_state();
-                    if let Err(err) = player.state.to_disc() {
-                        logln!("error while saving state: {err}");
+                    if player.playing {
+                        player.update_state();
+                        if let Err(err) = player.state.to_disc() {
+                            logln!("error while saving state: {err}");
+                        }
                     }
                 }
 
@@ -356,10 +358,11 @@ impl Player {
     fn update_state(&mut self) {
         if let Some(uri) = &self.current_uri {
             if let Some(pos) = self.query_position().map(ClockTime::seconds) {
-                if self.pending_seek.is_some() {
-                    // if we have pending seek then there is no need to update
-                    return;
-                }
+                // if self.pending_seek.is_some() {
+                // if we have pending seek then there is no need to update
+                //  ^ fake news
+                // return;
+                // }
                 logln!("updating: {uri} to {pos}");
                 let t = get_time();
 
