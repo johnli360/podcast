@@ -99,12 +99,16 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) {
         Cmd::SeekRelative(delta) => player.seek_relative(delta),
 
         Cmd::Subscribe(url) => {
+            logln!("cmd to subscribe to {url}");
             let x = RssFeed {
-                uri: url,
+                uri: url.clone(),
                 channel: None,
             };
             if let Ok(mut feeds) = player.state.rss_feeds.lock() {
-                feeds.push(x);
+                // TODO: better data structure for feeds?
+                if feeds.iter().find(|x| x.uri == url).is_none() {
+                    feeds.push(x);
+                }
             }
         }
         Cmd::Shutdown => {
@@ -136,7 +140,7 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) {
         Cmd::Update(args) => {
             let uri = args.0;
             logln!(
-                "received cmd to upadte {uri} to {} @ {}",
+                "cmd to update {uri} to {} @ {}",
                 args.1.progress.0,
                 args.1.progress.1
             );
