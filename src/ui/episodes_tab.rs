@@ -44,7 +44,7 @@ pub fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) {
                     .pub_date()
                     .map(DateTime::parse_from_rfc2822)
                     .and_then(Result::ok)
-                    .map(|dt| dt.date().naive_utc().to_string());
+                    .map(|dt| dt.date_naive().to_string());
 
                 let item = Row::new(vec![
                     Cell::from(i.to_string()),

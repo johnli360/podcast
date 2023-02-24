@@ -106,7 +106,7 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) {
             };
             if let Ok(mut feeds) = player.state.rss_feeds.lock() {
                 // TODO: better data structure for feeds?
-                if feeds.iter().find(|x| x.uri == url).is_none() {
+                if !feeds.iter().any(|x| x.uri == url) {
                     feeds.push(x);
                 }
             }
