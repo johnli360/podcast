@@ -21,7 +21,7 @@ pub fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: 
         .constraints(
             [
                 Constraint::Length(2),
-                Constraint::Length(5),
+                Constraint::Length((RECENT_SIZE+2) as u16),
                 Constraint::Length(3),
                 Constraint::Min(1),
             ]
@@ -40,7 +40,7 @@ pub fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: 
     }
 }
 
-const RECENT_SIZE: usize = 3;
+const RECENT_SIZE: usize = 10;
 fn draw_recents<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, player: &Player) {
     let recent_len = player.state.recent.len();
     let to_skip = recent_len
@@ -83,7 +83,7 @@ fn draw_recents<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState, p
         .rev() //TODO: not perfect, List of rows instead?
         .collect();
     let constraints = [
-        Constraint::Length(3),
+        Constraint::Length(RECENT_SIZE as u16),
         Constraint::Length(18),
         Constraint::Length(chunk.width),
     ];
@@ -142,12 +142,13 @@ fn draw_playlist<B: Backend>(
     ui_state.vscroll = chunk.height.saturating_sub(2 + 1);
     let half_height = chunk.height.saturating_sub(2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
+    let to_skip = if first < (half_height*2) as usize { 0 } else { first };
     let playlist: Vec<Row> = player
         .state
         .queue
         .iter()
         .enumerate()
-        .skip(first)
+        .skip(to_skip)
         .map(|(i, uri)| {
             let name = if let Some(name) = player.state.uris.get(uri).and_then(|p| p.title.as_ref())
             {
