@@ -11,6 +11,8 @@ use podaemon::ui::ui::UiUpdate;
 // use rss::Channel;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
+use tokio::select;
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use std::collections::VecDeque;
@@ -33,6 +35,10 @@ async fn main() -> Result<(), std::io::Error> {
     let tx2 = tx.clone();
     let tx3 = tx2.clone();
     let (ui_tx, ui_rx) = mpsc::channel::<UiUpdate>(64);
+
+    tokio::spawn(async move {
+        sig_handler(tx2).await.unwrap();
+    });
 
     if let Ok(port) = env::var("PORT") {
         {
@@ -116,4 +122,28 @@ fn start_key_thread(ui_tx: Sender<UiUpdate>) -> std::thread::JoinHandle<()> {
             }
         }
     })
+}
+
+async fn sig_handler(cmd: Sender<Cmd>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sigquit = signal(SignalKind::quit())?;
+    let mut sigterm = signal(SignalKind::terminate())?;
+    // let mut sigsuspend = signal(SignalKind::
+    loop {
+        select! {
+            Some(()) = sigterm.recv() => {
+                cmd.send(Cmd::Shutdown).await?;
+                break;
+            }
+            Some(()) = sigquit.recv() => {
+                cmd.send(Cmd::Shutdown).await?;
+                break;
+            }
+            Some(()) = sigint.recv() => {
+                cmd.send(Cmd::Shutdown).await?;
+                break;
+            }
+        }
+    }
+    Ok(())
 }
