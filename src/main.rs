@@ -36,15 +36,11 @@ async fn main() -> Result<(), std::io::Error> {
 
     if let Ok(port) = env::var("PORT") {
         {
-            let addr = format!("192.168.10.109:{port}");
+            let addr = format!("0.0.0.0:{port}");
             tokio::spawn(async move {
                 listen(tx, &addr).await;
             });
         }
-        tokio::spawn(async move {
-            let addr = format!("127.0.0.1:{port}");
-            listen(tx2, &addr).await;
-        });
     }
     if let Err(err) = terminal::enable_raw_mode() {
         logln!("{err}");
