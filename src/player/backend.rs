@@ -131,6 +131,9 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) {
         }
         Cmd::DeleteQueue(index) => {
             let uri = player.state.queue.remove(index);
+            if let Some(uri) = uri.as_ref() {
+                player.state.push_recent(uri);
+            }
             log_delete(index, uri);
         }
         Cmd::DeleteRecent(index) => {
@@ -339,6 +342,7 @@ impl Player {
             self.set_null();
             if let Some(uri) = &self.current_uri {
                 self.state.queue_front(uri);
+                // self.state.push_recent(uri);
             }
             self.duration = gst::ClockTime::NONE;
             self.set_uri(&next);
