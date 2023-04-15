@@ -31,8 +31,7 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
             }
         };
         start_refresh_thread(player.state.rss_feeds.clone(), ui_state.episodes.clone());
-        let bus = player.playbin.bus().unwrap();
-        let mut bus_stream = bus.stream();
+        let mut bus_stream = player.playbin.bus().unwrap().stream();
         let mut ui_interval = time::interval(Duration::from_millis(100));
 
         let stdout = std::io::stdout();
@@ -62,7 +61,20 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
             }
             msg = bus_stream.next() => {
                 if let Some(msg) = msg {
-                    handle_message(&mut player, &msg)
+                    if !handle_message(&mut player, &msg) {
+                        logln!("reseting playbin");
+                        let mut playbin = gst::ElementFactory::make("playbin", Some("playbin"))
+                            .expect("failed to initalise playbin");
+                        let mut new_bus_stream = playbin.bus().unwrap().stream();
+                        std::mem::swap(&mut player.playbin, &mut playbin);
+                        std::mem::swap(&mut bus_stream, &mut new_bus_stream);
+                        if let Some(uri) = player.current_uri.take() {
+                            player.set_uri(&uri);
+                        }
+                        if let Err(err) = player.playbin.set_state(gst::State::Ready) {
+                            logln!("failed to ready new playbing: {err}");
+                        }
+                    }
                 }
             }
             _ = ui_interval.tick() => {
@@ -160,24 +172,33 @@ fn log_delete(index: usize, uri: Option<String>) {
     }
 }
 
-fn handle_message(player: &mut Player, msg: &gst::Message) {
+fn handle_message(player: &mut Player, msg: &gst::Message) -> bool {
     use gst::MessageView;
 
     match msg.view() {
         MessageView::Error(err) => {
-            if err
-                .src()
-                .map(|src| src.path_string().to_string().contains("uridecodebin"))
-                .unwrap_or(false)
-            {
-                player.current_uri = None;
-            }
             logln!(
                 "Error received from element {:?}: {} ({:?})",
                 err.src().map(|s| s.path_string()),
                 err.error(),
                 err.debug()
             );
+
+            let err_str = err
+                .src()
+                .map(|src| src.path_string().to_string())
+                .unwrap_or_default();
+            if err_str.contains("uridecodebin") {
+                player.current_uri = None;
+            }
+
+            if err.error().to_string().contains("Connection terminated") {
+                logln!("pulse sink crashed :(");
+                player.set_null();
+                player.playing = false;
+
+                return false;
+            }
         }
         MessageView::Eos(..) => {
             logln!("End-Of-Stream reached.");
@@ -258,6 +279,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message) {
         }
         _ => (),
     }
+    true
 }
 
 use gst::{prelude::*, ClockTime};
@@ -393,8 +415,9 @@ impl Player {
         if self.playing {
             if let Err(err) = self.playbin.set_state(gst::State::Paused) {
                 logln!("Failed to set pipeline state to `Paused`: {err}");
+            } else {
+                self.update_state();
             }
-            self.update_state();
         }
     }
 
