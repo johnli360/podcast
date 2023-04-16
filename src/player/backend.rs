@@ -156,8 +156,8 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) {
             let uri = args.0;
             logln!(
                 "cmd to update {uri} to {} @ {}",
-                args.1.progress.0,
-                args.1.progress.1
+                args.1.progress.unwrap_or_default(),
+                args.1.length.unwrap_or_default(),
             );
             player.state.update_playable(uri, args.1);
         }
@@ -397,13 +397,17 @@ impl Player {
                 let t = get_time();
 
                 if let Some(playable) = self.state.uris.get_mut(uri) {
-                    playable.progress = (t, pos);
+                    playable.progress =  Some(pos);
+                    playable.updated = Some(t);
+                    playable.length = self.duration.map(gst::ClockTime::seconds);
                 } else {
                     let playable = Playable {
                         title: None,
                         album: None,
                         source: None,
-                        progress: (t, pos),
+                        progress: Some(pos),
+                        length: self.duration.map(gst::ClockTime::seconds),
+                        updated: Some(t),
                     };
                     self.state.insert_playable(uri.to_string(), playable);
                 };

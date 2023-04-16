@@ -1,6 +1,7 @@
 use crate::logln;
 use chrono::DateTime;
 use futures::future::join_all;
+use gstreamer::ClockTime;
 use reqwest::Client;
 use rss::{Channel, Item};
 use serde::{Deserialize, Serialize};
@@ -20,7 +21,24 @@ pub struct Playable {
     pub source: Option<String>,
     pub title: Option<String>,
     pub album: Option<String>,
-    pub progress: (u64, u64),
+    pub updated: Option<u64>,
+    pub progress: Option<u64>,
+    pub length: Option<u64>,
+}
+impl Playable {
+    pub fn progress_string(&self) -> String {
+        if let Some(p) = self.progress.map(ClockTime::from_seconds) {
+            if let Some(length) = self.length {
+                let f = (100 * self.progress.unwrap())
+                    .checked_div(1 + length)
+                    .unwrap();
+                return format!("{f}%");
+            } else {
+                return format!("{}m", p.minutes());
+            }
+        }
+        "n/a".into()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -114,25 +132,24 @@ impl State {
         new @ Playable {
             title: _,
             album: _,
-            progress: (new_time, _new_progress),
+            progress: _,
+            length: _,
             source: _,
+            updated: new_time,
         }: Playable,
     ) {
         match self.uris.get(&uri) {
-            Some(Playable {
-                title,
-                album,
-                source,
-                progress: (old_time, _progress),
-            }) => {
-                if new_time > *old_time {
+            Some(old) => {
+                if new_time > old.updated {
                     self.uris.insert(
                         uri,
                         Playable {
-                            source: source.clone(),
-                            title: title.clone(),
-                            album: album.clone(),
+                            source: old.source.clone(),
+                            title: old.title.clone(),
+                            album: old.album.clone(),
                             progress: new.progress,
+                            updated: new_time,
+                            length: new.length,
                         },
                     );
                 }
@@ -171,11 +188,11 @@ impl State {
     }
 
     pub fn get_pos(&self, uri: &str) -> Option<u64> {
-        self.uris.get(uri).map(|p| p.progress.1)
+        self.uris.get(uri).and_then(|p| p.progress)
     }
 }
 
-fn cmp_date(date1: &(&String, &Item), date2: &(&String, &Item)) -> Ordering {
+fn cmp_date(date1: &(String, Item), date2: &(String, Item)) -> Ordering {
     let dates = (
         date1
             .1
@@ -224,7 +241,7 @@ fn get_recent_episodes(feeds: &[RssFeed]) -> Vec<(String, Item)> {
         })
         .flatten()
         .collect();
-    episodes.sort_by(|(t1, i1), (t2, i2)| cmp_date(&(t1, i1), &(t2, i2)));
+    episodes.sort_by(cmp_date);
     episodes
 }
 

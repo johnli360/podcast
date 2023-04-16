@@ -362,14 +362,15 @@ impl UiState {
 
                                 if let Some((chan_title, title, url, source)) = info {
                                     let url2 = url.clone();
-                                    let pos = player.state.uris.get(&url2);
+                                    let pos = player.state.uris.get(&url);
                                     let playable = Playable {
                                         title,
                                         album: Some(chan_title),
                                         progress: pos
-                                            .map(|x| x.progress)
-                                            .unwrap_or((get_time(), 0)),
+                                            .and_then(|x| x.progress),
                                         source,
+                                        updated: Some(get_time()),
+                                        length: None,
                                     };
                                     player.state.insert_playable(url, playable);
 
@@ -415,7 +416,7 @@ pub fn draw_ui(
 
         match ui_state.tab_index {
             0 => draw_player_tab(f, player, ui_state),
-            1 => draw_episodes_tab(f, ui_state),
+            1 => draw_episodes_tab(f, player, ui_state),
             2 => draw_feed_tab(f, player, ui_state),
             3 => draw_event_log_tab(f, ui_state),
             _ => (),

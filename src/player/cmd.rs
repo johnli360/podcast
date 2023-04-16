@@ -32,38 +32,46 @@ impl Default for UpdateArgs {
                 title: None,
                 album: None,
                 source: None,
-                progress: (0, 0),
+                progress: None,
+                updated: None,
+                length: None,
             },
         )
     }
 }
 
 impl UpdateArgs {
-    pub fn to_cmd_string(self) -> String {
-        let Self(
-            uri,
-            Playable {
-                title: _,
-                album: _,
-                source: _,
-                progress: (t, p),
-            },
-        ) = self;
-        format!("update({uri},{t},{p})")
-    }
+/*     pub fn to_cmd_string(self) -> String { */
+        /* let Self( */
+            /* uri, */
+            /* Playable { */
+                /* title: _, */
+                /* album: _, */
+                /* source: _, */
+                /* progress: p, */
+                /* updated: t, */
+                /* length: l, */
+            /* }, */
+        /* ) = self; */
+        /* // format!("update({uri},{t:?},{p:?})") */
+        /* todo!("not implemented"); */
+    /* } */
 
     pub fn parse(raw: &str) -> Option<Self> {
         let mut rs = raw.split(',');
         let uri = rs.next()?;
-        let time = rs.next().and_then(|s| s.parse::<u64>().ok())?;
         let progress = rs.next().and_then(|s| s.parse::<u64>().ok())?;
+        let length = rs.next().and_then(|s| s.parse::<u64>().ok())?;
+        let time = rs.next().and_then(|s| s.parse::<u64>().ok())?;
         Some(UpdateArgs(
             uri.to_string(),
             Playable {
                 title: None,
                 album: None,
                 source: None,
-                progress: (time, progress),
+                progress: Some(progress),
+                length: Some(length),
+                updated: Some(time),
             },
         ))
     }
