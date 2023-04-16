@@ -10,7 +10,7 @@ use tui::{backend::CrosstermBackend, Terminal};
 
 use crate::{
     player::state::get_time,
-    ui::ui::{draw_ui, UiState, UiUpdate},
+    ui::interface::{draw_ui, UiState, UiUpdate},
 };
 
 use super::{

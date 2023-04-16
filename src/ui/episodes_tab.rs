@@ -10,7 +10,7 @@ use tui::{
 
 use crate::player::{state::Playable, Player};
 
-use super::ui::UiState;
+use super::interface::UiState;
 
 pub fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut UiState) {
     let chunks = Layout::default()

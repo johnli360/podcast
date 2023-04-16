@@ -1,4 +1,4 @@
-use super::ui::{last_n, UiState};
+use super::interface::{last_n, UiState};
 use crate::player::Player;
 use tui::{
     backend::Backend,

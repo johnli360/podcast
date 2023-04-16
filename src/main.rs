@@ -7,7 +7,7 @@ use crossterm::{execute, terminal};
 
 use podaemon::logln;
 use podaemon::player::{self, Cmd};
-use podaemon::ui::ui::UiUpdate;
+use podaemon::ui::interface::UiUpdate;
 // use rss::Channel;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;

@@ -11,7 +11,7 @@ use tui::{
 
 use crate::{dir::children, player::Player};
 
-use super::ui::{last_n, UiState};
+use super::interface::{last_n, UiState};
 use gstreamer::State;
 
 pub fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &mut UiState) {

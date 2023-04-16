@@ -9,7 +9,7 @@ use tui::{
     Frame,
 };
 
-use super::ui::UiState;
+use super::interface::UiState;
 
 pub static mut LOG: Mutex<Option<VecDeque<String>>> = Mutex::new(None);
 pub fn _log(msg: fmt::Arguments) {
