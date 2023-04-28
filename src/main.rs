@@ -15,17 +15,11 @@ use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use std::collections::VecDeque;
 use std::env;
 use std::io::stdout;
-use std::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    unsafe {
-        let msgs = VecDeque::with_capacity(200);
-        podaemon::ui::log::LOG = Mutex::new(Some(msgs));
-    }
     // console_subscriber::init();
     logln!("init");
     gstreamer::init().unwrap();

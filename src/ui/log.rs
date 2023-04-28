@@ -1,5 +1,6 @@
 use std::{collections::VecDeque, fmt, fs::File, io::Write, sync::Mutex};
 
+use once_cell::sync::Lazy;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
@@ -11,27 +12,28 @@ use tui::{
 
 use super::interface::UiState;
 
-pub static mut LOG: Mutex<Option<VecDeque<String>>> = Mutex::new(None);
+pub static LOG: Lazy<Mutex<VecDeque<String>>> = Lazy::new(|| {
+    let msgs = VecDeque::with_capacity(200);
+    Mutex::new(msgs)
+});
+
 pub fn _log(msg: fmt::Arguments) {
     let time = chrono::Local::now();
     let mut log_file = std::env::var("LOG_FILE")
         .ok()
         .and_then(|name| File::options().create(true).append(true).open(name).ok());
-    unsafe {
-        if let Ok(mut log) = LOG.lock() {
-            let log = log.as_mut().expect("log uninitialised");
-            let msg = format!("{time}: {}", msg);
-            if let Some(Err(err)) = log_file.as_mut().map(|log_file| {
-                log_file
-                    .write(msg.as_bytes())
-                    .and(log_file.write("\n".as_bytes()))
-            }) {
-                log.push_front(err.to_string());
-            }
-            log.push_front(msg);
-            if log.len() == log.capacity() {
-                log.pop_back();
-            }
+    if let Ok(mut log) = LOG.lock() {
+        let msg = format!("{time}: {}", msg);
+        if let Some(Err(err)) = log_file.as_mut().map(|log_file| {
+            log_file
+                .write(msg.as_bytes())
+                .and(log_file.write("\n".as_bytes()))
+        }) {
+            log.push_front(err.to_string());
+        }
+        log.push_front(msg);
+        if log.len() == log.capacity() {
+            log.pop_back();
         }
     }
 }
@@ -44,8 +46,7 @@ pub fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) 
         .split(f.size());
     ui_state.vscroll = chunks[1].height.saturating_sub(2);
 
-    if let Ok(log) = unsafe { LOG.lock() } {
-        let log = log.as_ref().expect("log uninitialised");
+    if let Ok(log) = LOG.lock() {
         let offset = (chunks[1].height - 2).saturating_sub(log.len() as u16);
         let half_height = ((chunks[1].height - 2) / 2) as usize;
         let skip = ui_state
@@ -72,11 +73,9 @@ pub fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) 
 }
 
 pub fn get_cursor_bound() -> usize {
-    unsafe {
-        if let Ok(guard) = LOG.lock() {
-            guard.as_ref().map(|log| log.len()).unwrap_or(usize::MAX)
-        } else {
-            usize::MAX
-        }
+    if let Ok(guard) = LOG.lock() {
+        guard.len()
+    } else {
+        usize::MAX
     }
 }
