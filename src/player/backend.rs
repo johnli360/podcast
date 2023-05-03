@@ -238,7 +238,14 @@ fn handle_message(player: &mut Player, msg: &gst::Message) -> bool {
                         player.seek_enabled = seekable;
                         if seekable {
                             if let Some(pos) = player.pending_seek.take() {
-                                logln!("seeking to pending: {pos}");
+                                let (hours, minutes, seconds) =
+                                    clktime_to_hms(gst::ClockTime::from_seconds(pos));
+                                logln!(
+                                    "seeking to pending: {}:{:02}:{:02}",
+                                    hours,
+                                    minutes,
+                                    seconds
+                                );
                                 player.seek(pos);
                             }
                         } else {
@@ -280,7 +287,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message) -> bool {
     true
 }
 
-use gst::{prelude::*, ClockTime};
+use gst::prelude::*;
 use gstreamer as gst;
 
 pub struct Player {
@@ -385,12 +392,16 @@ impl Player {
 
     fn update_state(&mut self) {
         if let Some(uri) = &self.current_uri {
-            if let Some(pos) = self.query_position().map(ClockTime::seconds) {
-                logln!("updating: {uri} to {pos}");
-                let t = get_time();
+            if let Some(pos) = self.query_position() {
+                {
+                    let (hours, minutes, seconds) = clktime_to_hms(pos);
+                    logln!("{}:{:02}:{:02} ~ {uri}", hours, minutes, seconds);
+                }
 
+                let seconds = pos.seconds();
+                let t = get_time();
                 if let Some(playable) = self.state.uris.get_mut(uri) {
-                    playable.progress =  Some(pos);
+                    playable.progress = Some(seconds);
                     playable.updated = Some(t);
                     playable.length = self.duration.map(gst::ClockTime::seconds);
                 } else {
@@ -398,7 +409,7 @@ impl Player {
                         title: None,
                         album: None,
                         source: None,
-                        progress: Some(pos),
+                        progress: Some(seconds),
                         length: self.duration.map(gst::ClockTime::seconds),
                         updated: Some(t),
                     };
@@ -452,4 +463,11 @@ impl Player {
     pub fn query_position(&self) -> Option<gst::ClockTime> {
         self.playbin.query_position::<gst::ClockTime>()
     }
+}
+
+const fn clktime_to_hms(time: gst::ClockTime) -> (u64, u64, u64) {
+    let seconds = time.seconds();
+    let minutes = time.minutes();
+    let hours = minutes / 60;
+    (hours, minutes % 60, seconds % 60)
 }
