@@ -46,7 +46,7 @@ pub fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state
                     .pub_date()
                     .map(DateTime::parse_from_rfc2822)
                     .and_then(Result::ok)
-                    .map(|dt| dt.date_naive().to_string());
+                    .map(|dt| dt.format("%m-%d").to_string());
 
                 let progress = item
                     .enclosure()
@@ -69,7 +69,7 @@ pub fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state
             .collect();
         let constraints = [
             // Constraint::Length(3),
-            Constraint::Length(10),
+            Constraint::Length(5),
             Constraint::Length(5),
             Constraint::Length(18),
             Constraint::Length(chunks[2].width),

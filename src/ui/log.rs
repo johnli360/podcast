@@ -18,7 +18,7 @@ pub static LOG: Lazy<Mutex<VecDeque<String>>> = Lazy::new(|| {
 });
 
 pub fn _log(msg: fmt::Arguments) {
-    let time = chrono::Local::now();
+    let time = chrono::Local::now().format("%m-%d %H:%M:%S%.3f");
     let mut log_file = std::env::var("LOG_FILE")
         .ok()
         .and_then(|name| File::options().create(true).append(true).open(name).ok());
