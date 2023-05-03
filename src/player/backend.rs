@@ -237,9 +237,7 @@ fn handle_message(player: &mut Player, msg: &gst::Message) -> bool {
                         let (seekable, _start, _end) = seeking.result();
                         player.seek_enabled = seekable;
                         if seekable {
-                            // ui.log_event(format!("Seeking is ENABLED from {} to {}", start, end));
                             if let Some(pos) = player.pending_seek.take() {
-                                // println_raw!("seeking to pending: {pos}");
                                 logln!("seeking to pending: {pos}");
                                 player.seek(pos);
                             }
@@ -388,11 +386,6 @@ impl Player {
     fn update_state(&mut self) {
         if let Some(uri) = &self.current_uri {
             if let Some(pos) = self.query_position().map(ClockTime::seconds) {
-                // if self.pending_seek.is_some() {
-                // if we have pending seek then there is no need to update
-                //  ^ fake news
-                // return;
-                // }
                 logln!("updating: {uri} to {pos}");
                 let t = get_time();
 
