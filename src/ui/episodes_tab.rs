@@ -1,8 +1,7 @@
-// use podaemon::dir::children;
 use chrono::DateTime;
 use tui::{
     backend::Backend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     widgets::{Block, Borders, Cell, Paragraph, Row, Table},
     Frame,
@@ -86,9 +85,37 @@ pub fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state
 
         f.render_widget(tbl, chunks[1]);
 
-        if let Some(search) = &ui_state.prompt {
-            let input = Paragraph::new(format!(": {}", search.as_str())).style(Style::default());
-            f.render_widget(input, chunks[2]);
-        };
+        draw_prompt(f, chunks[2], &ui_state);
     }
+}
+
+pub fn draw_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &UiState) {
+    let left_side = if let Some(search) = &ui_state.prompt {
+        format!("{} search: {}", ui_state.hit_number, search.as_str())
+    } else {
+        String::new()
+    };
+    let cursor_pos = ui_state.get_cursor_pos().to_string();
+    let cursor_pos_len = (cursor_pos.len() % 256) as u16;
+    let left_side_len = (left_side.len() % 256) as u16;
+
+    let to_pad = chunk
+        .width
+        .saturating_sub(left_side_len)
+        .saturating_sub(cursor_pos_len);
+
+    let l = Layout::default()
+        .direction(Direction::Horizontal)
+        .margin(0)
+        .constraints(
+            [
+                Constraint::Length(left_side_len),
+                Constraint::Length(to_pad),
+                Constraint::Length(cursor_pos_len),
+            ]
+            .as_ref(),
+        )
+        .split(chunk);
+    f.render_widget(Paragraph::new(left_side), l[0]);
+    f.render_widget(Paragraph::new(cursor_pos), l[2]);
 }

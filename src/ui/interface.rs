@@ -36,7 +36,7 @@ pub struct UiState {
     cursor_position: [usize; TAB_TITLES.len()],
     pub file_prompt: Option<(String, bool, Option<usize>, Vec<String>)>,
     pub prompt: Option<String>,
-    hit_number: isize,
+    pub hit_number: isize,
     pub vscroll: u16,
     key_hist: Vec<KeyEvent>,
     pub episodes: Arc<Mutex<Vec<(String, Item)>>>,
@@ -113,7 +113,7 @@ impl UiState {
             3 => log::get_cursor_bound(),
             _ => usize::MAX,
         };
-        bound - 1
+        bound.saturating_sub(1)
     }
 
     fn search_update(&mut self, code: KeyCode) {

@@ -35,12 +35,10 @@ async fn main() -> Result<(), std::io::Error> {
     });
 
     if let Ok(port) = env::var("PORT") {
-        {
-            let addr = format!("0.0.0.0:{port}");
-            tokio::spawn(async move {
-                listen(tx, &addr).await;
-            });
-        }
+        let addr = format!("0.0.0.0:{port}");
+        tokio::spawn(async move {
+            listen(tx, &addr).await;
+        });
     }
     if let Err(err) = terminal::enable_raw_mode() {
         logln!("{err}");
@@ -122,7 +120,6 @@ async fn sig_handler(cmd: Sender<Cmd>) -> Result<(), Box<dyn std::error::Error>>
     let mut sigint = signal(SignalKind::interrupt())?;
     let mut sigquit = signal(SignalKind::quit())?;
     let mut sigterm = signal(SignalKind::terminate())?;
-    // let mut sigsuspend = signal(SignalKind::
     loop {
         select! {
             Some(()) = sigterm.recv() => {
