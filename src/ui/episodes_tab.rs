@@ -7,7 +7,10 @@ use tui::{
     Frame,
 };
 
-use crate::player::{state::Playable, Player};
+use crate::player::{
+    state::{Episode, Playable},
+    Player,
+};
 
 use super::interface::UiState;
 
@@ -38,33 +41,41 @@ pub fn draw_episodes_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state
             .enumerate()
             .skip(first)
             .take(tbl_height.into())
-            .map(|(i, (chan_title, item))| {
-                let asd = String::from("n/a");
-                let pod_title = item.title.as_ref().unwrap_or(&asd);
-                let date = item
-                    .pub_date()
-                    .map(DateTime::parse_from_rfc2822)
-                    .and_then(Result::ok)
-                    .map(|dt| dt.format("%m-%d").to_string());
+            .map(
+                |(
+                    i,
+                    Episode {
+                        channel_title,
+                        item,
+                    },
+                )| {
+                    let asd = String::from("n/a");
+                    let pod_title = item.title.as_ref().unwrap_or(&asd);
+                    let date = item
+                        .pub_date()
+                        .map(DateTime::parse_from_rfc2822)
+                        .and_then(Result::ok)
+                        .map(|dt| dt.format("%m-%d").to_string());
 
-                let progress = item
-                    .enclosure()
-                    .and_then(|e| player.state.uris.get(&e.url))
-                    .map(Playable::progress_string);
+                    let progress = item
+                        .enclosure()
+                        .and_then(|e| player.state.uris.get(&e.url))
+                        .map(Playable::progress_string);
 
-                let item = Row::new(vec![
-                    // Cell::from(i.to_string()),
-                    Cell::from(date.unwrap_or_default()),
-                    Cell::from(progress.unwrap_or_default()),
-                    Cell::from(chan_title.to_string()),
-                    Cell::from(pod_title.to_string()),
-                ]);
-                if ui_state.get_cursor_pos() == i {
-                    item.style(Style::default().fg(Color::Black).bg(Color::White))
-                } else {
-                    item
-                }
-            })
+                    let item = Row::new(vec![
+                        // Cell::from(i.to_string()),
+                        Cell::from(date.unwrap_or_default()),
+                        Cell::from(progress.unwrap_or_default()),
+                        Cell::from(channel_title.to_string()),
+                        Cell::from(pod_title.to_string()),
+                    ]);
+                    if ui_state.get_cursor_pos() == i {
+                        item.style(Style::default().fg(Color::Black).bg(Color::White))
+                    } else {
+                        item
+                    }
+                },
+            )
             .collect();
         let constraints = [
             // Constraint::Length(3),

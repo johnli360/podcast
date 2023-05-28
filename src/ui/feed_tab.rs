@@ -32,12 +32,14 @@ pub fn draw_feed_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &m
             .enumerate()
             .skip(first)
             .take(chunks[1].height as usize)
-            .map(|(i, m)| {
-                let text = if let Some(x) = &m.channel {
-                    &x.title
+            .map(|(i, feed)| {
+                let channel_guard = feed.channel.read();
+                let text = if let Ok(Some(channel)) = channel_guard.as_deref() {
+                    &channel.title
                 } else {
-                    &m.uri
+                    &feed.uri
                 };
+
                 let content = vec![Spans::from(Span::raw(format!(
                     "{}: {}",
                     i,

@@ -1,18 +1,18 @@
 use crate::logln;
 use chrono::DateTime;
-use futures::future::join_all;
 use gstreamer::ClockTime;
 use reqwest::Client;
 use rss::{Channel, Item};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::time;
+use tokio::sync::mpsc::{self, channel};
+use tokio::{select, time};
 
 const FILE: &str = "state";
 
@@ -41,20 +41,63 @@ impl Playable {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Episode {
+    pub channel_title: String,
+    pub item: Item,
+}
+
+impl Eq for Episode {}
+
+impl Ord for Episode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.cmp_date(other)
+    }
+}
+
+impl PartialOrd for Episode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Episode {
+    fn cmp_date(&self, other: &Episode) -> Ordering {
+        //TODO: don't want to parse all this stuff for every compare
+        let dates = (
+            self.item
+                .pub_date()
+                .map(DateTime::parse_from_rfc2822)
+                .map(Result::ok),
+            other
+                .item
+                .pub_date()
+                .map(DateTime::parse_from_rfc2822)
+                .map(Result::ok),
+        );
+        dates.1.cmp(&dates.0)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RssFeed {
     pub uri: String,
     #[serde(skip)]
-    pub channel: Option<Channel>,
+    pub channel: Arc<RwLock<Option<Channel>>>,
 }
 impl RssFeed {
-    pub async fn load(&mut self, client: Arc<Client>) {
+    pub async fn load(&self, client: &Client) {
         if let Ok(content) = client.get(&self.uri).send().await {
             match content.bytes().await {
                 Ok(content) => match Channel::read_from(&content[..]) {
                     Ok(channel) => {
                         logln!("updated channel {}", &channel.title);
-                        self.channel.replace(channel);
+                        match self.channel.write() {
+                            Ok(mut guard) => {
+                                let _old = guard.replace(channel);
+                                //TODO: return old and use it to diff ?
+                            }
+                            Err(err) => logln!("failed to lock channel {err}"),
+                        }
                     }
                     Err(err) => logln!("failed to read channel {} - {err}", self.uri),
                 },
@@ -77,7 +120,7 @@ pub fn get_time() -> u64 {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct State {
     #[serde(default = "new_rss_feeds")]
-    pub rss_feeds: Arc<Mutex<Vec<RssFeed>>>,
+    pub rss_feeds: Mutex<Vec<Arc<RssFeed>>>,
 
     pub uris: HashMap<String, Playable>,
     #[serde(default = "VecDeque::new")]
@@ -86,8 +129,8 @@ pub struct State {
     pub recent: VecDeque<String>,
 }
 
-fn new_rss_feeds() -> Arc<Mutex<Vec<RssFeed>>> {
-    Arc::new(Mutex::new(Vec::new()))
+fn new_rss_feeds() -> Mutex<Vec<Arc<RssFeed>>> {
+    Mutex::new(Vec::new())
 }
 
 fn new_recent() -> VecDeque<String> {
@@ -192,22 +235,6 @@ impl State {
     }
 }
 
-fn cmp_date(date1: &(String, Item), date2: &(String, Item)) -> Ordering {
-    let dates = (
-        date1
-            .1
-            .pub_date()
-            .map(DateTime::parse_from_rfc2822)
-            .map(Result::ok),
-        date2
-            .1
-            .pub_date()
-            .map(DateTime::parse_from_rfc2822)
-            .map(Result::ok),
-    );
-    dates.1.cmp(&dates.0)
-}
-
 #[allow(dead_code)]
 fn debug_item(item: &Item) -> &Item {
     use std::io::Write;
@@ -223,73 +250,56 @@ fn debug_item(item: &Item) -> &Item {
     item
 }
 
-fn get_recent_episodes(feeds: &[RssFeed]) -> Vec<(String, Item)> {
-    const EP_LIM: usize = 100;
-    let mut episodes: Vec<(String, Item)> = feeds
-        .iter()
-        .filter_map(|feed| {
-            if let Some(chan) = &feed.channel {
-                let zipped = chan
-                    .items
-                    .iter()
-                    // .map(debug_item)
-                    .map(move |item| (chan.title.clone(), item.clone()));
-                Some(zipped.take(EP_LIM))
-            } else {
-                None
-            }
-        })
-        .flatten()
-        .collect();
-    episodes.sort_by(cmp_date);
-    episodes
-}
-
-async fn refresh_feeds(feeds: &mut Vec<RssFeed>) {
-    let mut futs = Vec::with_capacity(feeds.len());
-    let client = Client::builder().user_agent("007").build();
-    match client {
-        Ok(client) => {
-            let client = Arc::new(client);
-            for feed in feeds {
-                futs.push(feed.load(client.clone()));
-            }
-            join_all(futs).await;
-        }
-        Err(err) => logln!("Failed to init reqwest client: {err}"),
-    }
-}
-
-pub fn start_refresh_thread(
-    rss_feeds: Arc<Mutex<Vec<RssFeed>>>,
-    episodes: Arc<Mutex<Vec<(String, Item)>>>,
-) {
-    let mut update_interval = time::interval(Duration::from_secs(3600));
+pub fn start_refresh_thread(episodes: Arc<Mutex<BTreeSet<Episode>>>) -> mpsc::Sender<Arc<RssFeed>> {
+    let (feed_tx, mut feed_rx) = channel::<Arc<RssFeed>>(10);
     tokio::spawn(async move {
+        let (ep_tx, mut ep_rx) = channel::<Episode>(10);
         loop {
-            update_interval.tick().await;
-            let mut feed_copy: Vec<RssFeed> = if let Ok(rss_feeds) = rss_feeds.lock() {
-                rss_feeds
-                    .iter()
-                    .map(|RssFeed { uri, .. }| RssFeed {
-                        uri: uri.to_string(),
-                        channel: None,
-                    })
-                    .collect()
-            } else {
-                continue;
-            };
-            refresh_feeds(&mut feed_copy).await;
-
-            let eps = get_recent_episodes(&feed_copy);
-            match rss_feeds.lock() {
-                Ok(mut feeds) => *feeds = feed_copy,
-                Err(err) => logln!("Failed to refresh feed: {err}"),
+            select! {
+                Some(feed) = feed_rx.recv() => {
+                    observe_feed(feed, ep_tx.clone());
+                }
+                Some(ep) = ep_rx.recv() => {
+                    match episodes.lock() {
+                        Ok(mut episodes) => { episodes.insert(ep); },
+                        Err(err) => logln!("{err}"),
+                    }
+                }
             }
+        }
+    });
+    feed_tx
+}
 
-            if let Ok(mut episodes) = episodes.lock() {
-                *episodes = eps;
+fn observe_feed(feed: Arc<RssFeed>, tx: mpsc::Sender<Episode>) {
+    tokio::spawn(async move {
+        let mut update_interval = time::interval(Duration::from_secs(3600));
+        let client = Client::builder().user_agent("007").build();
+        match client {
+            Ok(client) => {
+                let mut new_episodes: Vec<Episode> = Vec::new();
+                loop {
+                    update_interval.tick().await;
+                    feed.load(&client).await;
+                    if let Ok(Some(channel)) = feed.channel.read().as_deref() {
+                        let channel_title = channel.title();
+                        for e in &channel.items {
+                            let ep = Episode {
+                                channel_title: channel_title.to_string(),
+                                item: e.clone(),
+                            };
+                            new_episodes.push(ep);
+                        }
+                    }
+
+                    while let Some(ep) = new_episodes.pop() {
+                        if let Err(err) = tx.send(ep).await {
+                            logln!("failed to send ep: {err}")
+                        }
+                    }
+                }
             }
+            Err(err) => logln!("Failed to init reqwest client: {err}"),
         }
     });
 }

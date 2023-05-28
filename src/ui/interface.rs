@@ -1,13 +1,13 @@
 // use podaemon::dir::children;
 use std::{
     cmp,
+    collections::BTreeSet,
     io::Stdout,
     mem,
     sync::{Arc, Mutex},
 };
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use rss::Item;
 use tokio::sync::mpsc::Sender;
 use tui::{
     backend::CrosstermBackend,
@@ -19,7 +19,7 @@ use tui::{
 };
 
 use crate::player::{
-    state::{get_time, Playable},
+    state::{get_time, Episode, Playable},
     Cmd, Player,
 };
 
@@ -39,7 +39,8 @@ pub struct UiState {
     pub hit_number: isize,
     pub vscroll: u16,
     key_hist: Vec<KeyEvent>,
-    pub episodes: Arc<Mutex<Vec<(String, Item)>>>,
+    // pub episodes: Arc<Mutex<Vec<(String, Item)>>>,
+    pub episodes: Arc<Mutex<BTreeSet<Episode>>>,
     tx: Sender<Cmd>,
 }
 impl UiState {
@@ -58,7 +59,7 @@ impl UiState {
             prompt: None,
             vscroll: 0,
             key_hist: Vec::new(),
-            episodes: Arc::new(Mutex::new(Vec::new())),
+            episodes: Arc::new(Mutex::new(BTreeSet::new())),
             tx,
         }
     }
@@ -70,17 +71,26 @@ impl UiState {
                 let i = eps
                     .iter()
                     .enumerate()
-                    .find(|(_i, (_url, item))| {
-                        item.title()
-                            .map(|title| {
-                                let is_match = title.to_lowercase().contains(prompt);
-                                if is_match {
-                                    hit_count += 1;
-                                }
-                                is_match && hit_count > self.hit_number
-                            })
-                            .unwrap_or(false)
-                    })
+                    .find(
+                        |(
+                            _i,
+                            Episode {
+                                channel_title,
+                                item,
+                            },
+                        )| {
+                            item.title()
+                                .map(|title| {
+                                    let mut is_match = title.to_lowercase().contains(prompt);
+                                    is_match |= channel_title.to_lowercase().contains(prompt);
+                                    if is_match {
+                                        hit_count += 1;
+                                    }
+                                    is_match && hit_count > self.hit_number
+                                })
+                                .unwrap_or(false)
+                        },
+                    )
                     .map(|(i, _)| i);
 
                 if let Some(i) = i {
@@ -346,18 +356,23 @@ impl UiState {
                         KeyCode::Enter => {
                             if self.tab_index == 1 {
                                 let info = self.episodes.lock().ok().and_then(|eps| {
-                                    eps.get(self.get_cursor_pos())
-                                        .and_then(|(chan_title, item)| {
+                                    eps.iter().nth(self.get_cursor_pos()).and_then(
+                                        |Episode {
+                                             channel_title: uri,
+                                             item,
+                                         }| {
                                             let x = item.enclosure().map(|enclosure| {
                                                 (
-                                                    chan_title.clone(),
+                                                    // chan_title.clone(),
+                                                    uri.clone(),
                                                     item.title().map(str::to_string),
                                                     enclosure.url.clone(),
                                                     item.source.clone().map(|s| s.url),
                                                 )
                                             });
                                             x
-                                        })
+                                        },
+                                    )
                                 });
 
                                 if let Some((chan_title, title, url, source)) = info {
@@ -366,8 +381,7 @@ impl UiState {
                                     let playable = Playable {
                                         title,
                                         album: Some(chan_title),
-                                        progress: pos
-                                            .and_then(|x| x.progress),
+                                        progress: pos.and_then(|x| x.progress),
                                         source,
                                         updated: Some(get_time()),
                                         length: None,

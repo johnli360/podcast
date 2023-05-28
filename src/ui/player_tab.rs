@@ -21,7 +21,7 @@ pub fn draw_player_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: 
         .constraints(
             [
                 Constraint::Length(2),
-                Constraint::Length((RECENT_SIZE+2) as u16),
+                Constraint::Length((RECENT_SIZE + 2) as u16),
                 Constraint::Length(3),
                 Constraint::Min(1),
             ]
@@ -142,7 +142,11 @@ fn draw_playlist<B: Backend>(
     ui_state.vscroll = chunk.height.saturating_sub(2 + 1);
     let half_height = chunk.height.saturating_sub(2) / 2;
     let first = ui_state.get_cursor_pos().saturating_sub(half_height.into());
-    let to_skip = if first < (half_height*2) as usize { 0 } else { first };
+    let to_skip = if first < (half_height * 2) as usize {
+        0
+    } else {
+        first
+    };
     let playlist: Vec<Row> = player
         .state
         .queue

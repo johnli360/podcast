@@ -41,20 +41,20 @@ impl Default for UpdateArgs {
 }
 
 impl UpdateArgs {
-/*     pub fn to_cmd_string(self) -> String { */
-        /* let Self( */
-            /* uri, */
-            /* Playable { */
-                /* title: _, */
-                /* album: _, */
-                /* source: _, */
-                /* progress: p, */
-                /* updated: t, */
-                /* length: l, */
-            /* }, */
-        /* ) = self; */
-        /* // format!("update({uri},{t:?},{p:?})") */
-        /* todo!("not implemented"); */
+    /*     pub fn to_cmd_string(self) -> String { */
+    /* let Self( */
+    /* uri, */
+    /* Playable { */
+    /* title: _, */
+    /* album: _, */
+    /* source: _, */
+    /* progress: p, */
+    /* updated: t, */
+    /* length: l, */
+    /* }, */
+    /* ) = self; */
+    /* // format!("update({uri},{t:?},{p:?})") */
+    /* todo!("not implemented"); */
     /* } */
 
     pub fn parse(raw: &str) -> Option<Self> {

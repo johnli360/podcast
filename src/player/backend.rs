@@ -1,5 +1,9 @@
 use crate::logln;
-use std::{error::Error, time::Duration};
+use std::{
+    error::Error,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 use tokio::{
     select,
     sync::mpsc::{Receiver, Sender},
@@ -18,6 +22,21 @@ use super::{
     Cmd,
 };
 
+async fn start_observation(state: &State, feed_tx: Sender<Arc<RssFeed>>) {
+    let mut feeds = Vec::new();
+    if let Ok(rss_feeds) = state.rss_feeds.lock() {
+        for feed in rss_feeds.iter() {
+            feeds.push(feed.clone());
+        }
+    }
+
+    for feed in feeds.iter() {
+        if let Err(err) = feed_tx.send(feed.clone()).await {
+            logln!("failed to send feed: {err}");
+        }
+    }
+}
+
 pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender<Cmd> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
     let ui_cmd_tx = tx.clone();
@@ -30,7 +49,9 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
                 return;
             }
         };
-        start_refresh_thread(player.state.rss_feeds.clone(), ui_state.episodes.clone());
+        let feed_tx = start_refresh_thread(ui_state.episodes.clone());
+        start_observation(&player.state, feed_tx.clone()).await;
+
         let mut bus_stream = player.playbin.bus().unwrap().stream();
         let mut ui_interval = time::interval(Duration::from_millis(100));
 
@@ -114,12 +135,14 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) {
             logln!("cmd to subscribe to {url}");
             let x = RssFeed {
                 uri: url.clone(),
-                channel: None,
+                channel: Arc::new(RwLock::new(None)),
             };
             if let Ok(mut feeds) = player.state.rss_feeds.lock() {
                 // TODO: better data structure for feeds?
                 if !feeds.iter().any(|x| x.uri == url) {
-                    feeds.push(x);
+                    feeds.push(Arc::new(x));
+                    //TODO: start observing the new feed
+                    // feed_tx.send(x);
                 }
             }
         }
