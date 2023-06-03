@@ -2,9 +2,6 @@ use crossterm::event::{read, Event, KeyEvent};
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal};
 
-// #[macro_use]
-// mod macros;
-
 use podaemon::logln;
 use podaemon::player::{self, Cmd};
 use podaemon::ui::interface::UiUpdate;

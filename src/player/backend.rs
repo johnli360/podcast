@@ -42,14 +42,14 @@ pub async fn new(mut ui_rx: Receiver<UiUpdate>, ploop_tx: Sender<Cmd>) -> Sender
     let ui_cmd_tx = tx.clone();
     tokio::spawn(async move {
         let mut ui_state = UiState::new(ui_cmd_tx);
-        let mut player = match Player::new() {
+        let feed_tx = start_refresh_thread(ui_state.episodes.clone());
+        let mut player = match Player::new(feed_tx.clone()) {
             Ok(player) => player,
             Err(err) => {
                 logln!("failed to initialize player: {err}");
                 return;
             }
         };
-        let feed_tx = start_refresh_thread(ui_state.episodes.clone());
         start_observation(&player.state, feed_tx.clone()).await;
 
         let mut bus_stream = player.playbin.bus().unwrap().stream();
@@ -133,17 +133,21 @@ async fn run_cmd(cmd: Cmd, player: &mut Player) {
 
         Cmd::Subscribe(url) => {
             logln!("cmd to subscribe to {url}");
-            let x = RssFeed {
+            let new_feed = Arc::new(RssFeed {
                 uri: url.clone(),
                 channel: Arc::new(RwLock::new(None)),
-            };
+            });
+            if let Err(err) = player.feed_tx.send(new_feed.clone()).await {
+                logln!("failed send new feed: {err}");
+            }
             if let Ok(mut feeds) = player.state.rss_feeds.lock() {
                 // TODO: better data structure for feeds?
                 if !feeds.iter().any(|x| x.uri == url) {
-                    feeds.push(Arc::new(x));
-                    //TODO: start observing the new feed
-                    // feed_tx.send(x);
+                    feeds.push(new_feed);
                 }
+            }
+            if let Err(err) = player.state.to_disc() {
+                logln!("{err}");
             }
         }
         Cmd::Shutdown => {
@@ -322,10 +326,11 @@ pub struct Player {
     pub play_state: gst::State,
     seek_enabled: bool,
     pending_seek: Option<u64>,
+    feed_tx: Sender<Arc<RssFeed>>,
 }
 
 impl Player {
-    fn new() -> Result<Self, Box<dyn Error>> {
+    fn new(feed_tx: Sender<Arc<RssFeed>>) -> Result<Self, Box<dyn Error>> {
         let playbin = gst::ElementFactory::make("playbin", Some("playbin"))?;
         let state = State::from_disc()?;
 
@@ -338,6 +343,7 @@ impl Player {
             seek_enabled: false,
             duration: gst::ClockTime::NONE,
             current_uri: None,
+            feed_tx,
         })
     }
 
