@@ -1,11 +1,11 @@
 use std::{collections::VecDeque, fmt, fs::File, io::Write, sync::Mutex};
 
 use once_cell::sync::Lazy;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    text::{Span, Spans},
+    text::{Span, Line},
     widgets::{Block, Borders, List, ListItem},
     Frame,
 };
@@ -58,7 +58,7 @@ pub fn draw_event_log_tab<B: Backend>(f: &mut Frame<B>, ui_state: &mut UiState) 
             .enumerate()
             .skip(skip)
             .map(|(i, m)| {
-                let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
+                let content = vec![Line::from(Span::raw(format!("{}: {}", i, m)))];
                 let item = ListItem::new(content);
                 if ui_state.get_cursor_pos() == i {
                     item.style(Style::default().fg(Color::Black).bg(Color::White))

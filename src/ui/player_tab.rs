@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
-    text::{Span, Spans},
+    text::{Span, Line},
     widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table},
     Frame,
 };
@@ -123,7 +123,7 @@ fn draw_file_prompt<B: Backend>(f: &mut Frame<B>, chunk: Rect, ui_state: &mut Ui
         let cmpl: Vec<ListItem> = cmpl
             .iter()
             .map(|m| {
-                let content = vec![Spans::from(Span::raw(m))];
+                let content = vec![Line::from(Span::raw(m))];
                 ListItem::new(content)
             })
             .collect();

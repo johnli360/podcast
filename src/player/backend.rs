@@ -10,7 +10,7 @@ use tokio::{
     time,
 };
 use tokio_stream::StreamExt;
-use tui::{backend::CrosstermBackend, Terminal};
+use ratatui::{backend::CrosstermBackend, Terminal};
 
 use crate::{
     player::state::get_time,

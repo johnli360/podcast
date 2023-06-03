@@ -1,10 +1,10 @@
 use super::interface::{last_n, UiState};
 use crate::player::Player;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    text::{Span, Spans},
+    text::{Span, Line},
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
@@ -40,7 +40,7 @@ pub fn draw_feed_tab<B: Backend>(f: &mut Frame<B>, player: &Player, ui_state: &m
                     &feed.uri
                 };
 
-                let content = vec![Spans::from(Span::raw(format!(
+                let content = vec![Line::from(Span::raw(format!(
                     "{}: {}",
                     i,
                     last_n(text, chunks[1].width.saturating_sub(5))

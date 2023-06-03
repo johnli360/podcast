@@ -1,4 +1,3 @@
-// use podaemon::dir::children;
 use std::{
     cmp,
     collections::BTreeSet,
@@ -9,11 +8,11 @@ use std::{
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc::Sender;
-use tui::{
+use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
     style::{Color, Style},
-    text::{Span, Spans},
+    text::{Span, Line},
     widgets::{Block, Borders, Tabs},
     Terminal,
 };
@@ -419,7 +418,7 @@ pub fn draw_ui(
             .split(f.size());
         let titles = TAB_TITLES
             .iter()
-            .map(|t| Spans::from(vec![Span::styled(*t, Style::default().fg(Color::White))]))
+            .map(|t| Line::from(vec![Span::styled(*t, Style::default().fg(Color::White))]))
             .collect();
         let tabs = Tabs::new(titles)
             .block(Block::default().borders(Borders::BOTTOM))
